@@ -33,6 +33,53 @@ std::string daikin_fan_mode_to_string(DaikinFanMode mode);
 inline float c10_c(int16_t c10) { return c10 / 10.0; }
 inline float c10_f(int16_t c10) { return c10_c(c10) * 1.8 + 32.0; }
 
+
+class DaikinSerial {
+public:
+  static constexpr uint32_t S21_MAX_COMMAND_SIZE = 4;
+  static constexpr uint32_t S21_PAYLOAD_SIZE = 4;
+
+  enum class Result : uint8_t {
+    Idle,
+    Ack,
+    Nak,
+    Error,
+    Timeout,
+    Busy,
+  };
+  
+  void set_uarts(uart::UARTComponent *tx, uart::UARTComponent *rx);
+  Result service();
+  Result send_frame(const char *cmd, const std::array<char, S21_PAYLOAD_SIZE> *payload = nullptr);
+  void flush_input();
+  
+  std::vector<uint8_t> response = {};
+  bool debug = false;
+
+private:
+  static constexpr uint32_t S21_RESPONSE_TURNAROUND = 50; // allow some time for the unit to begin listening after it sends
+  static constexpr uint32_t S21_RESPONSE_TIMEOUT = 250; // character timeout when expecting a response from the unit
+  static constexpr uint32_t S21_ERROR_TIMEOUT = 3000; // cooldown time when something goes wrong
+
+  Result handle_rx(uint8_t byte);
+
+  enum class CommState : uint8_t {
+    Idle,
+    Cooldown,
+    QueryAck,
+    QueryStx,
+    QueryEtx,
+    CommandAck,
+  };
+
+  uart::UARTComponent *tx_uart{nullptr};
+  uart::UARTComponent *rx_uart{nullptr};
+  CommState comm_state = CommState::Idle;
+  uint32_t last_event_time = 0;
+  uint32_t cooldown_length = 0;
+};
+
+
 struct DaikinSettings {
   bool power_on = false;
   DaikinClimateMode mode = DaikinClimateMode::Disabled;
@@ -42,14 +89,17 @@ struct DaikinSettings {
   bool swing_h = false;
 };
 
+
 class DaikinS21 : public PollingComponent {
  public:
+  DaikinSerial serial;
+
   void setup() override;
   void loop() override;
   void update() override;
   void dump_config() override;
-  void set_uarts(uart::UARTComponent *tx, uart::UARTComponent *rx);
-  void set_debug_protocol(bool set) { this->debug_protocol = set; }
+
+  void set_debug_protocol(bool set) { this->debug_protocol = set; this->serial.debug = set; }
 
   bool is_ready() { return this->ready.all(); }
 
@@ -74,32 +124,12 @@ class DaikinS21 : public PollingComponent {
   bool is_idle() { return this->compressor_hz == 0; }
 
  protected:
-  static constexpr uint32_t S21_RESPONSE_TURNAROUND = 75; // allow some time for the unit to begin listening after it sends
-  static constexpr uint32_t S21_RESPONSE_TIMEOUT = 250; // character timeout when expecting a response from the unit
-  static constexpr uint32_t S21_ERROR_TIMEOUT = 3000; // cooldown time when something goes wrong
-  static constexpr uint32_t S21_MAX_COMMAND_SIZE = 4;
-  static constexpr uint32_t S21_MAX_PAYLOAD_SIZE = 4;
-
   void dump_state();
-  void check_uart_settings();
-  void write_frame(const uint8_t *payload = nullptr, size_t payload_len = 0);
-  void tx_next_command();
-  void parse_command_response();
-  void handle_rx_byte(uint8_t new_byte);
+  void refine_queries();
+  void tx_next();
+  void parse_ack();
+  void handle_nak();
 
-  uart::UARTComponent *tx_uart{nullptr};
-  uart::UARTComponent *rx_uart{nullptr};
-
-  // communication state machine
-  enum class CommState : uint8_t {
-    Idle,
-    QueryAck,
-    QueryStx,
-    QueryEtx,
-    CommandAck,
-    Error
-  };
-  CommState comm_state = CommState::Idle;
   enum RequiredCommand : uint8_t {
     ReadyBasic,
     ReadySwing,
@@ -107,11 +137,11 @@ class DaikinS21 : public PollingComponent {
     ReadyCount, // just for bitset sizing
   };
   std::bitset<ReadyCount> ready = {};
+
+  // communication state
   std::vector<const char *> queries = {};
   std::vector<const char *>::iterator current_query;
   const char *tx_command = "";  // used when matching responses - value must have persistent lifetime
-  std::vector<uint8_t> rx_buffer = {};
-  uint32_t rx_timeout = 0;
   bool refresh_state = false;
   bool debug_protocol = false;
   std::unordered_map<std::string, std::vector<uint8_t>> val_cache;  // debugging
@@ -131,7 +161,9 @@ class DaikinS21 : public PollingComponent {
   uint8_t compressor_hz = 0;
 
   //protocol support
-  bool support_rg = false;
+  bool support_RG = false;
+  bool support_RH = false;
+  bool support_Ra = false;
 };
 
 class DaikinS21Client {

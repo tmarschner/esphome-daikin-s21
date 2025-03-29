@@ -74,52 +74,27 @@ uint8_t c10_to_setpoint_byte(int16_t setpoint) {
   return (setpoint + 3) / 5 + 28;
 }
 
-void DaikinS21::set_uarts(uart::UARTComponent *tx, uart::UARTComponent *rx) {
-  this->tx_uart = tx;
-  this->rx_uart = rx;
-}
-
 #define S21_BAUD_RATE 2400
 #define S21_STOP_BITS 2
 #define S21_DATA_BITS 8
 #define S21_PARITY uart::UART_CONFIG_PARITY_EVEN
 
-void DaikinS21::check_uart_settings() {
-  for (auto uart : {this->tx_uart, this->rx_uart}) {
-    if (uart->get_baud_rate() != S21_BAUD_RATE) {
-      ESP_LOGE(
-          TAG,
-          "  Invalid baud_rate: Integration requested baud_rate %u but you "
-          "have %" PRIu32 "!",
-          S21_BAUD_RATE, uart->get_baud_rate());
-    }
-    if (uart->get_stop_bits() != S21_STOP_BITS) {
-      ESP_LOGE(
-          TAG,
-          "  Invalid stop bits: Integration requested stop_bits %u but you "
-          "have %u!",
-          S21_STOP_BITS, uart->get_stop_bits());
-    }
-    if (uart->get_data_bits() != S21_DATA_BITS) {
-      ESP_LOGE(TAG,
-               "  Invalid number of data bits: Integration requested %u data "
-               "bits but you have %u!",
-               S21_DATA_BITS, uart->get_data_bits());
-    }
-    if (uart->get_parity() != S21_PARITY) {
-      ESP_LOGE(
-          TAG,
-          "  Invalid parity: Integration requested parity %s but you have %s!",
-          LOG_STR_ARG(parity_to_str(S21_PARITY)),
-          LOG_STR_ARG(parity_to_str(uart->get_parity())));
-    }
+void DaikinSerial::set_uarts(uart::UARTComponent *tx, uart::UARTComponent *rx) {
+  this->tx_uart = tx;
+  this->rx_uart = rx;
+
+  for (auto *uart : {this->tx_uart, this->rx_uart}) {
+    uart->set_baud_rate(S21_BAUD_RATE);
+    uart->set_stop_bits(S21_STOP_BITS);
+    uart->set_data_bits(S21_DATA_BITS);
+    uart->set_parity(S21_PARITY);
+    uart->load_settings();
   }
 }
 
 void DaikinS21::dump_config() {
   ESP_LOGCONFIG(TAG, "DaikinS21:");
   ESP_LOGCONFIG(TAG, "  Update interval: %" PRIu32, this->get_update_interval());
-  this->check_uart_settings();
 }
 
 // Adapated from ESPHome UART debugger
@@ -172,95 +147,253 @@ std::string str_repr(const uint8_t *bytes, size_t len) {
   return res;
 }
 
-void DaikinS21::write_frame(const uint8_t *payload, size_t payload_len) {
-  size_t command_len = strlen(tx_command);
-  if (command_len > S21_MAX_COMMAND_SIZE) {
-    ESP_LOGE(TAG, "Tx: Command '%s' too large", tx_command);
-    comm_state = CommState::Error;
-    return;
+DaikinSerial::Result DaikinSerial::handle_rx(const uint8_t byte) {
+  Result result = Result::Busy; // default to busy, override when rx phase is over
+
+  switch (comm_state) {
+    case CommState::QueryAck:
+    case CommState::CommandAck:
+      switch (byte) {
+        case ACK:
+          if (comm_state == CommState::QueryAck) {
+            comm_state = CommState::QueryStx;
+          } else {
+            comm_state = CommState::Cooldown;
+            cooldown_length = S21_RESPONSE_TURNAROUND;
+            result = Result::Ack;
+          }
+          break;
+        case NAK:
+          comm_state = CommState::Cooldown;
+          cooldown_length = S21_RESPONSE_TURNAROUND;
+          result = Result::Nak;
+          break;
+        default:
+          ESP_LOGW(TAG, "Rx ACK: Unuexpected 0x%02X", byte);
+          comm_state = CommState::Cooldown;
+          cooldown_length = S21_ERROR_TIMEOUT;
+          result = Result::Error;
+          break;
+      }
+      break;
+
+    case CommState::QueryStx:
+      if (byte == STX) {
+        comm_state = CommState::QueryEtx;
+      } else if (byte == ACK) {
+        ESP_LOGD(TAG, "Rx STX: Unuexpected extra ACK, ignoring"); // on rare occasions my unit will do this
+      } else {
+        ESP_LOGW(TAG, "Rx STX: Unuexpected 0x%02X", byte);
+        comm_state = CommState::Cooldown;
+        cooldown_length = S21_ERROR_TIMEOUT;
+        result = Result::Error;
+      }
+      break;
+
+    case CommState::QueryEtx:
+      if (byte != ETX) {
+        // not the end, add to buffer
+        response.push_back(byte);
+        if (response.size() > (S21_MAX_COMMAND_SIZE + S21_PAYLOAD_SIZE + 1)) {  // +1 for checksum byte
+          ESP_LOGW(TAG, "Rx ETX: Overflow %s %s + 0x%02X",
+            str_repr(response.data(), response.size()).c_str(),
+            hex_repr(response.data(), response.size()).c_str(),
+            byte);
+          comm_state = CommState::Cooldown;
+          cooldown_length = S21_ERROR_TIMEOUT;
+          result = Result::Error;
+        }
+      } else {
+        // frame received, validate checksum
+        const uint8_t checksum = response[response.size() - 1];
+        response.pop_back();
+        const uint8_t calc_checksum = std::accumulate(response.begin(), response.end(), 0U);
+        if ((calc_checksum == checksum)
+            || ((calc_checksum == STX) && (checksum == ENQ))) {  // protocol avoids STX in message body
+          tx_uart->write_byte(ACK);
+          comm_state = CommState::Cooldown;
+          cooldown_length = S21_RESPONSE_TURNAROUND;
+          result = Result::Ack;
+        } else {
+          ESP_LOGW(TAG, "Rx ETX: Checksum mismatch: 0x%02X != 0x%02X (calc from %s)",
+            checksum, calc_checksum, hex_repr(response.data(), response.size()).c_str());
+          comm_state = CommState::Cooldown;
+          cooldown_length = S21_ERROR_TIMEOUT;
+          result = Result::Error;
+        }
+      }
+      break;
+      
+    default:
+      break;
   }
 
-  if (this->debug_protocol) {
-    ESP_LOGV(TAG, "Tx: %s %s %s", tx_command,
-             str_repr(payload, payload_len).c_str(),
-             hex_repr(payload, payload_len).c_str());
-  }
-
-  this->tx_uart->write_byte(STX);
-  this->tx_uart->write_str(tx_command);
-  uint8_t checksum = std::accumulate(tx_command, tx_command + command_len, 0U);
-  if (payload_len) {
-    this->tx_uart->write_array(payload, payload_len);
-    checksum = std::accumulate(payload, payload + payload_len, checksum);
-  }
-  if (checksum == STX) {
-    checksum = ENQ;  // escape mid-message STX characters
-  }
-  this->tx_uart->write_byte(checksum);
-  this->tx_uart->write_byte(ETX);
+  return result;
 }
 
-void DaikinS21::tx_next_command() {
-  uint8_t payload[S21_MAX_PAYLOAD_SIZE];
+DaikinSerial::Result DaikinSerial::service() {
+  Result result = Result::Busy;
 
-  std::fill(std::begin(payload), std::end(payload),
-            static_cast<uint8_t>('0'));  // prefill to save lines later
+  switch(comm_state) {
+  case CommState::Idle:
+    result = Result::Idle;
+    break;
+
+  case CommState::Cooldown:
+    if ((millis() - last_event_time) > cooldown_length) {
+      comm_state = CommState::Idle;
+      result = Result::Idle;
+    }
+    break;
+
+  default:
+    // all other states are actively receiving data from the unit
+    if ((millis() - last_event_time) > S21_RESPONSE_TIMEOUT) {  // timed out?
+      comm_state = CommState::Idle;
+      result = Result::Timeout;
+      break;
+    }
+    while ((result == Result::Busy) && rx_uart->available()) {  // read all available bytes
+      uint8_t byte;
+      rx_uart->read_byte(&byte);
+      last_event_time = millis();
+      result = handle_rx(byte);
+    }
+    break;
+  }
+
+  return result;
+}
+
+DaikinSerial::Result DaikinSerial::send_frame(const char *cmd, const std::array<char, S21_PAYLOAD_SIZE> *payload) {
+  if (comm_state != CommState::Idle) {
+    return Result::Busy;
+  }
+
+  size_t cmd_len = strlen(cmd);
+  if (cmd_len > S21_MAX_COMMAND_SIZE) {
+    ESP_LOGW(TAG, "Tx: Command '%s' too large", cmd);
+    return Result::Error;
+  }
+
+  if (debug) {
+    if (payload == nullptr) {
+      ESP_LOGD(TAG, "Tx: %s", cmd);
+    } else {
+      ESP_LOGD(TAG, "Tx: %s %s %s", cmd,
+               str_repr(reinterpret_cast<const uint8_t*>(payload->data()), payload->size()).c_str(),
+               hex_repr(reinterpret_cast<const uint8_t*>(payload->data()), payload->size()).c_str());
+    }
+  }
+
+  // prepare for response
+  response.clear();
+  flush_input();
+
+  // transmit
+  tx_uart->write_byte(STX);
+  tx_uart->write_array(reinterpret_cast<const uint8_t *>(cmd), cmd_len);
+  uint8_t checksum = std::accumulate(cmd, cmd + cmd_len, 0U);
+  if (payload) {
+    tx_uart->write_array(reinterpret_cast<const uint8_t *>(payload->data()), payload->size());
+    checksum = std::accumulate(payload->data(), payload->data() + payload->size(), checksum);
+  }
+  if (checksum == STX) {
+    checksum = ENQ;  // mid-message STX characters are escaped
+  }
+  tx_uart->write_byte(checksum);
+  tx_uart->write_byte(ETX);
+
+  // wait for result
+  last_event_time = millis();
+  comm_state = (payload != nullptr) ? CommState::CommandAck : CommState::QueryAck;
+
+  return Result::Ack;
+}
+
+void DaikinSerial::flush_input() {  // would be a nice ESPHome API improvement
+  uint8_t byte;
+  while (rx_uart->available()) {
+    rx_uart->read_byte(&byte);
+  }
+}
+
+void DaikinS21::refine_queries() {
+  // exclude F9 if unit supports the individual sensors with better resolution
+  if (support_Ra && support_RH)
+  {
+    const auto f9 = std::find_if(std::begin(queries), std::end(queries), [](const char * query){ return strcmp(query, "F9") == 0; });
+    if (f9 != std::end(queries))
+    {
+      ESP_LOGD(TAG, "Removing F9 from query pool (better support in Ra and RH)");
+      queries.erase(f9);
+    }
+  }
+}
+
+void DaikinS21::tx_next() {
+  std::array<char, DaikinSerial::S21_PAYLOAD_SIZE> payload;
 
   // select next command / query
   if (activate_climate) {
-    activate_climate = false;
     tx_command = "D1";
-    payload[0] = static_cast<uint8_t>(pending.power_on ? '1' : '0');
-    payload[1] = static_cast<uint8_t>(pending.mode);
-    payload[2] = static_cast<uint8_t>(
-        c10_to_setpoint_byte(lroundf(round(pending.setpoint * 2) / 2 * 10.0)));
-    payload[3] = static_cast<uint8_t>(pending.fan);
-    comm_state = CommState::CommandAck;
-  }
-  else if (activate_swing_mode) {
-    activate_swing_mode = false;
-    tx_command = "D5";  // todo encoding deviates from faikin
-    payload[0] = static_cast<uint8_t>(
-        '0' + (pending.swing_h && pending.swing_v ? 4 : 0) +
-        (pending.swing_h ? 2 : 0) + (pending.swing_v ? 1 : 0));
-    payload[1] =
-        static_cast<uint8_t>(pending.swing_v || pending.swing_h ? '?' : '0');
-    comm_state = CommState::CommandAck;
-  }
-  else if (current_query != queries.end()) {
-    // query scan underway, continue
-    tx_command = *current_query;
-    comm_state = CommState::QueryAck;
-  }
-  else if (refresh_state) {
-    // start fresh query scan
-    refresh_state = false;
-    current_query = queries.begin();
-    tx_command = *current_query;
-    comm_state = CommState::QueryAck;
-  }
-  else {
-    return;  // nothing to do
+    payload[0] = pending.power_on ? '1' : '0';
+    payload[1] = static_cast<char>(pending.mode);
+    payload[2] = c10_to_setpoint_byte(lroundf(round(pending.setpoint * 2) / 2 * 10.0));
+    payload[3] = static_cast<char>(pending.fan);
+    this->serial.send_frame(tx_command, &payload);
+    return;
   }
 
-  // transmit and prep for response
-  if (comm_state == CommState::CommandAck) {
-    write_frame(payload, 4);
-  } else {
-    write_frame(nullptr, 0);
+  if (activate_swing_mode) {
+    // todo encoding deviates from faikin
+    tx_command = "D5";
+    payload[0] = '0' + (pending.swing_h && pending.swing_v ? 4 : 0)
+                     + (pending.swing_h ? 2 : 0)
+                     + (pending.swing_v ? 1 : 0);
+    payload[1] = pending.swing_v || pending.swing_h ? '?' : '0';
+    payload[2] = '0';
+    payload[3] = '0';
+    this->serial.send_frame(tx_command, &payload);
+    return;
   }
-  rx_timeout = millis();
-  rx_buffer.clear();
+  
+  // periodic queries
+  if (current_query != queries.end()) {
+    tx_command = *current_query;  // query scan underway, continue
+    this->serial.send_frame(tx_command);
+    return;
+  }
+  
+  // start fresh query scan (only after current scan is complete)
+  if (refresh_state) {
+    refresh_state = false;
+    refine_queries();
+    current_query = queries.begin(); 
+    tx_command = *current_query;
+    this->serial.send_frame(tx_command);
+    return;
+  }
 }
 
-void DaikinS21::parse_command_response() {
-  char rcode[S21_MAX_COMMAND_SIZE + 1] = {};
-  uint8_t payload[S21_MAX_PAYLOAD_SIZE];
+void DaikinS21::parse_ack() {
+  char rcode[DaikinSerial::S21_MAX_COMMAND_SIZE + 1] = {};
+  uint8_t payload[DaikinSerial::S21_PAYLOAD_SIZE];
   const size_t rcode_len = strlen(tx_command);
-  const size_t payload_len = rx_buffer.size() - rcode_len;
+  size_t payload_len = 0;
 
-  std::copy_n(&rx_buffer[0], rcode_len, rcode);
-  std::copy_n(&rx_buffer[rcode_len], payload_len, payload);
+  // prepare response buffers for decoding
+  if (serial.response.empty()) {
+    payload_len = 0;
+    // commands don't return anything except an Ack, pretend we received the command itself to provide something to distinguish handling below
+    std::copy_n(tx_command, rcode_len, rcode);
+  } else {
+    payload_len = serial.response.size() - rcode_len;
+    std::copy_n(serial.response.data(), rcode_len, rcode);
+    std::copy_n(serial.response.data() + rcode_len, payload_len, payload);
+    // query successful, move to the next one
+    current_query++;
+  }
 
   switch (rcode[0]) {
     case 'G':  // F -> G
@@ -269,7 +402,7 @@ void DaikinS21::parse_command_response() {
           this->active.power_on = (payload[0] == '1');
           this->active.mode = static_cast<DaikinClimateMode>(payload[1]);
           this->active.setpoint = ((payload[2] - 28) * 5);  // Celsius * 10
-          if (this->support_rg == false) {  // prefer RG (silent mode not reported here)
+          if (this->support_RG == false) {  // prefer RG (silent mode not reported here)
             this->active.fan = static_cast<DaikinFanMode>(payload[3]);
           }
           this->ready.set(ReadyBasic);
@@ -281,7 +414,7 @@ void DaikinS21::parse_command_response() {
           break;
         case '8':  // F8 -> G8 -- Protocol version. Always 0 for me.
           break;
-        case '9':  // F9 -> G9 -- Inside temperature, todo don't poll if unit supports RH and Ra (0.5 degree granularity there)
+        case '9':  // F9 -> G9 -- Temperature, better support in RH and Ra (0.5 degree granularity)
           this->temp_inside = temp_f9_byte_to_c10(&payload[0]);
           this->temp_outside = temp_f9_byte_to_c10(&payload[1]);
           break;
@@ -294,18 +427,20 @@ void DaikinS21::parse_command_response() {
       switch (rcode[1]) {
         case 'B':  // Operational mode, single character, same info as G1
           return;
-        case 'G':  // Fan mode, better detail than G1
+        case 'G':  // Fan mode, better detail than G1 (reports quiet mode)
           this->active.fan = static_cast<daikin_s21::DaikinFanMode>(payload[0]);
-          this->support_rg = true;
+          this->support_RG = true;
           return;
         case 'H':  // Inside temperature
           this->temp_inside = temp_bytes_to_c10(payload);
+          this->support_RH = true;
           return;
         case 'I':  // Coil temperature
           this->temp_coil = temp_bytes_to_c10(payload);
           return;
         case 'a':  // Outside temperature
           this->temp_outside = temp_bytes_to_c10(payload);
+          this->support_Ra = true;
           return;
         case 'L':  // Fan speed
           this->fan_rpm = bytes_to_num(payload, payload_len) * 10;
@@ -334,9 +469,24 @@ void DaikinS21::parse_command_response() {
           }
           break;
       }
+      break;
 
     case 'M':  // todo faikin says 100WH units of power
       break;
+
+    case 'D':  // D -> D (fake response, see above)
+      switch (rcode[1]) {
+        case '1':
+          this->activate_climate = false;
+          break;
+        case '5':
+          this->activate_swing_mode = false;
+          break;
+        default:
+          break;
+      }
+      this->refresh_state = true; // a command took, trigger immediate refresh
+      return;
 
     default:
       break;
@@ -368,87 +518,17 @@ void DaikinS21::parse_command_response() {
   }
 }
 
-void DaikinS21::handle_rx_byte(uint8_t byte) {
-  const char *const tx_type =
-      (comm_state == CommState::CommandAck) ? "command" : "query";
-
-  switch (comm_state) {
-    case CommState::QueryAck:
-    case CommState::CommandAck:
-      switch (byte) {
-        case ACK:
-          if (comm_state == CommState::QueryAck) {
-            comm_state = CommState::QueryStx;
-          } else {
-            ESP_LOGV(TAG, "Rx: ACK from S21 for command %s", tx_command);
-            comm_state = CommState::Idle;
-            rx_timeout = millis();
-            refresh_state = true;  // command took, refresh whole state
-          }
-          break;
-        case NAK:
-          ESP_LOGW(TAG, "Rx: NAK from S21 for %s %s", tx_type, tx_command);
-          if (comm_state == CommState::QueryAck) {
-            ESP_LOGW(TAG, "Removing %s from query pool (assuming unsupported)",
-                     tx_command);
-            queries.erase(current_query);
-          }
-          comm_state = CommState::Idle;
-          rx_timeout = millis();
-          break;
-        default:
-          ESP_LOGW(TAG, "Rx: No ACK from S21 for %s %s", tx_type, tx_command);
-          comm_state = CommState::Error;
-          break;
-      }
-      break;
-
-    case CommState::QueryStx:
-      if (byte == STX) {
-        comm_state = CommState::QueryEtx;
-        rx_buffer = {};  // prepare for payload
-      } else {
-        ESP_LOGW(TAG, "Rx: No STX from S21 for query %s", tx_command);
-        comm_state = CommState::Error;
-      }
-      break;
-
-    case CommState::QueryEtx:
-      if (byte != ETX) {
-        // not the end, add to buffer
-        rx_buffer.push_back(byte);
-        if (rx_buffer.size() >
-            (S21_MAX_COMMAND_SIZE + S21_MAX_PAYLOAD_SIZE + 1)) {
-          ESP_LOGW(TAG, "Rx: Overflow from query %s response", tx_command);
-          comm_state = CommState::Error;
-        }
-      } else {
-        // frame received, validate
-        byte = rx_buffer[rx_buffer.size() - 1];
-        rx_buffer.pop_back();
-        {
-          uint8_t calc_csum =
-              std::accumulate(rx_buffer.begin(), rx_buffer.end(), 0U);
-          if ((calc_csum == byte) ||
-              ((calc_csum == STX) &&
-               (byte == ENQ))) {  // protocol avoids STX in message body
-            tx_uart->write_byte(ACK);
-            parse_command_response();
-            current_query++;
-            comm_state = CommState::Idle;
-            rx_timeout = millis();
-          } else {
-            ESP_LOGW(TAG,
-                     "Rx: Checksum mismatch: %x (frame) != %x (calc from %s)",
-                     byte, calc_csum,
-                     hex_repr(rx_buffer.data(), rx_buffer.size()).c_str());
-            comm_state = CommState::Error;
-          }
-        }
-      }
-      break;
-    default:
-      break;
+void DaikinS21::handle_nak() {
+  ESP_LOGW(TAG, "Rx: NAK from S21 for %s", tx_command);
+  if (strcmp(tx_command, *current_query) == 0) {
+    ESP_LOGW(TAG, "Removing %s from query pool (assuming unsupported)", tx_command);
+    // current_query iterator will be invalidated, recover index and 
+    const auto index = std::distance(queries.begin(), current_query);
+    queries.erase(current_query);
+    current_query = queries.begin() + index;
+  } else {
+    ESP_LOGW(TAG, "Acknowledging %s command despite NAK", tx_command);
+    parse_ack();  // don't get stuck retrying unsupported command
   }
 }
 
@@ -477,41 +557,35 @@ void DaikinS21::setup() {
 }
 
 void DaikinS21::loop() {
-  switch (comm_state) {
-    case CommState::Idle:
-      if ((millis() - rx_timeout) > S21_RESPONSE_TURNAROUND) {
-        tx_next_command();
-      }
+  using Result = DaikinSerial::Result;
+
+  switch (serial.service()) {
+    case Result::Ack:
+      ESP_LOGV(TAG, "Rx: ACK from S21 for command %s", tx_command);
+      parse_ack();
       break;
 
-    case CommState::Error:
-      if ((millis() - rx_timeout) > S21_ERROR_TIMEOUT) {
-        ESP_LOGD(TAG, "Error state expired");
-        comm_state = CommState::Idle;
-        rx_timeout = millis();
-        rx_uart->flush();
-        current_query = queries.end();
-        refresh_state = true;
-        activate_climate = false;
-        activate_swing_mode = false;
-      }
+    case Result::Idle:
+      tx_next();
       break;
 
-    default:  // all other states are actively receiving data from the unit
-      // timed out?
-      if ((millis() - rx_timeout) > S21_RESPONSE_TIMEOUT) {
-        ESP_LOGW(TAG, "Timeout waiting for %s response", tx_command);
-        comm_state = CommState::Idle;
-        break;
-      }
-      // read all available bytes
-      while (rx_uart->available()) {
-        uint8_t byte;
-        rx_uart->read_byte(&byte);
-        handle_rx_byte(byte);
-        rx_timeout = millis();
-      }
+    case Result::Nak:
+      handle_nak();
       break;
+
+    case Result::Error:
+      current_query = queries.end();
+      refresh_state = true;
+      activate_climate = false;
+      activate_swing_mode = false;
+      break;
+
+    case Result::Timeout:
+      ESP_LOGW(TAG, "Timeout waiting for response to %s", tx_command);
+      break;
+
+    default:
+    break;
   }
 }
 
