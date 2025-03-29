@@ -418,6 +418,8 @@ void DaikinS21::parse_ack() {
   const size_t rcode_len = strlen(tx_command);
   size_t payload_len = 0;
 
+  ESP_LOGV(TAG, "Rx: ACK from S21 for command %s", tx_command);
+
   // prepare response buffers for decoding
   if (serial.response.empty()) {
     payload_len = 0;
@@ -602,7 +604,6 @@ void DaikinS21::loop() {
 
   switch (serial.service()) {
     case Result::Ack:
-      ESP_LOGV(TAG, "Rx: ACK from S21 for command %s", tx_command);
       parse_ack();
       break;
 

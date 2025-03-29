@@ -17,6 +17,9 @@ Sensors:
 * Outside temperature (outside exchanger)
 * Coil temperature (indoor air handler's coil)
 * Fan speed
+* Vertical swing angle (directional louver)
+* Compressor frequency
+  * Note: I have no way to verify no scaling is to be applied to this value, implementation taken from the Faikin project. Open an issue if you can independently measure it.
 
 ## Limitations
 
@@ -61,7 +64,7 @@ logger:
   baud_rate: 0  # Disable UART logger if using UART0 (pins 1,3)
 
 external_components:
-  - source: github://joshbenner/esphome-daikin-s21@main
+  - source: github://asund/esphome-daikin-s21@main
     components: [ daikin_s21 ]
 
 uart:
@@ -87,7 +90,8 @@ climate:
   - name: My Daikin
     platform: daikin_s21
     visual:
-      temperature_step: 1.0
+      target_temperature: 1
+      current_temperature: 0.5
     # Optional HA sensor used to alter setpoint.
     room_temperature_sensor: room_temp  # See homeassistant sensor below
 
@@ -102,6 +106,10 @@ sensor:
       name: My Daikin Coil Temperature
     fan_speed:
       name: My Daikin Fan Speed
+    swing_vertical_angle:
+      name: Swing Vertical Angle
+    compressor_frequency:
+      name: Compressor Frequency
   - platform: homeassistant
     id: room_temp
     entity_id: sensor.office_temperature
