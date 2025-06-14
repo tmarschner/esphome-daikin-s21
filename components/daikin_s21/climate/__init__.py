@@ -5,14 +5,14 @@ Daikin S21 Mini-Split ESPHome component config validation & code generation.
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import climate, sensor
-from esphome.const import CONF_ID, CONF_SUPPORTED_MODES
+from esphome.components.climate import ClimateMode
+from esphome.const import CONF_SUPPORTED_MODES
 from .. import (
     daikin_s21_ns,
     CONF_S21_ID,
     S21_CLIENT_SCHEMA,
     DaikinS21Client,
 )
-from esphome.components.climate import ClimateMode
 
 CONF_ROOM_TEMPERATURE_SENSOR = "room_temperature_sensor"
 CONF_SETPOINT_INTERVAL = "setpoint_interval"
@@ -33,9 +33,9 @@ SUPPORTED_CLIMATE_MODES_OPTIONS = {
 }
 
 CONFIG_SCHEMA = cv.All(
-    climate.CLIMATE_SCHEMA.extend(
+    climate.climate_schema(DaikinS21Climate)
+    .extend(
         {
-            cv.GenerateID(): cv.declare_id(DaikinS21Climate),
             cv.Optional(CONF_ROOM_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
             cv.Optional(
                 CONF_SETPOINT_INTERVAL, default="300s"
@@ -52,9 +52,8 @@ CONFIG_SCHEMA = cv.All(
 
 async def to_code(config):
     """Generate code"""
-    var = cg.new_Pvariable(config[CONF_ID])
+    var = await climate.new_climate(config)
     await cg.register_component(var, config)
-    await climate.register_climate(var, config)
     s21_var = await cg.get_variable(config[CONF_S21_ID])
     cg.add(var.set_s21(s21_var))
     if CONF_ROOM_TEMPERATURE_SENSOR in config:
