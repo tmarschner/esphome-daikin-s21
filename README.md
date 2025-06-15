@@ -8,8 +8,8 @@ was the primary inspiration and guide for building this ESPHome component.
 ## Features
 
 - Setpoint temperature.
-- Climate modes COOL, HEAT, DRY, FAN, and HEAT_COOL.
-- Fan modes auto and 1-5.
+- Climate modes AUTO, OFF, COOL, HEAT, DRY, FAN, and HEAT_COOL.
+- Fan modes auto, silent and 1-5.
 - Swing modes horizontal, vertical, and both.
 
 Sensors:
@@ -20,8 +20,8 @@ Sensors:
 
 ## Limitations
 
-* This code has only been tested on ESP32 pico.
-* Does not detect nor support powerful, econo, quiet modes.
+* This code has only been tested on ESP32 pico and ESP32-S3.
+* Does not detect nor support powerful or econo modes.
 * Does not support comfort or presence detection features on some models.
 * Does not interact with the indoor units schedules (do that with HA instead).
 
@@ -77,7 +77,7 @@ uart:
 daikin_s21:
   tx_uart: s21_uart
   rx_uart: s21_uart
-  supported_modes:
+  supported_modes:  # auto and off are always supported
     - cool
     - heat
     - dry
