@@ -2,20 +2,12 @@
 
 #include <bitset>
 #include <vector>
+#include "esphome/components/climate/climate.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/component.h"
 
 namespace esphome {
 namespace daikin_s21 {
-
-enum class DaikinClimateMode : uint8_t {
-  Disabled = '0',
-  Auto = '1',
-  Dry = '2',
-  Cool = '3',
-  Heat = '4',
-  Fan = '6',
-};
 
 enum class DaikinFanMode : uint8_t {
   Auto = 'A',
@@ -27,7 +19,6 @@ enum class DaikinFanMode : uint8_t {
   Speed5 = '7',
 };
 
-std::string daikin_climate_mode_to_string(DaikinClimateMode mode);
 std::string daikin_fan_mode_to_string(DaikinFanMode mode);
 
 inline float c10_c(int16_t c10) { return c10 / 10.0; }
@@ -81,8 +72,7 @@ private:
 
 
 struct DaikinSettings {
-  bool power_on = false;
-  DaikinClimateMode mode = DaikinClimateMode::Disabled;
+  climate::ClimateMode mode = climate::CLIMATE_MODE_OFF;
   DaikinFanMode fan = DaikinFanMode::Auto;
   int16_t setpoint = 23;
   bool swing_v = false;
@@ -103,25 +93,23 @@ class DaikinS21 : public PollingComponent {
 
   bool is_ready() { return this->ready.all(); }
 
-  bool is_power_on() { return this->active.power_on; }
-  DaikinClimateMode get_climate_mode() { return this->active.mode; }
   DaikinFanMode get_fan_mode() { return this->active.fan; }
   float get_setpoint() { return this->active.setpoint / 10.0; }
   bool get_swing_h() { return this->active.swing_h; }
   bool get_swing_v() { return this->active.swing_v; }
 
   // external command actions
-  void set_daikin_climate_settings(bool power_on, DaikinClimateMode mode,
-                                   float setpoint, DaikinFanMode fan_mode);
+  void set_daikin_climate_settings(climate::ClimateMode mode, float setpoint, DaikinFanMode fan_mode);
   void set_swing_settings(bool swing_v, bool swing_h);
 
+  climate::ClimateMode get_climate_mode() { return this->active.mode; }
+  climate::ClimateAction get_climate_action();
   float get_temp_inside() { return this->temp_inside / 10.0; }
   float get_temp_outside() { return this->temp_outside / 10.0; }
   float get_temp_coil() { return this->temp_coil / 10.0; }
   uint16_t get_fan_rpm() { return this->fan_rpm; }
   uint8_t get_swing_vertical_angle() { return this->swing_vertical_angle; }
   uint16_t get_compressor_frequency() { return this->compressor_hz; }
-  bool is_idle() { return this->compressor_hz == 0; }
 
  protected:
   void dump_state();
@@ -159,6 +147,7 @@ class DaikinS21 : public PollingComponent {
   uint16_t fan_rpm = 0;
   int16_t swing_vertical_angle = 0;
   uint8_t compressor_hz = 0;
+  climate::ClimateAction climate_action = climate::CLIMATE_ACTION_OFF;
 
   //protocol support
   bool support_RG = false;

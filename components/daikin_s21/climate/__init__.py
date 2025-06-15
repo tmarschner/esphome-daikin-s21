@@ -25,11 +25,11 @@ UARTComponent = uart_ns.class_("UARTComponent")
 
 SUPPORTED_CLIMATE_MODES_OPTIONS = {
     "OFF": ClimateMode.CLIMATE_MODE_OFF,  # always available
-    "AUTO": ClimateMode.CLIMATE_MODE_AUTO,  # always available
+    "HEAT_COOL": ClimateMode.CLIMATE_MODE_HEAT_COOL,  # always available
     "COOL": ClimateMode.CLIMATE_MODE_COOL,
     "HEAT": ClimateMode.CLIMATE_MODE_HEAT,
-    "DRY": ClimateMode.CLIMATE_MODE_DRY,
     "FAN_ONLY": ClimateMode.CLIMATE_MODE_FAN_ONLY,
+    "DRY": ClimateMode.CLIMATE_MODE_DRY,
 }
 
 CONFIG_SCHEMA = cv.All(
@@ -68,6 +68,6 @@ async def to_code(config):
         cg.add(var.set_supported_modes([
             ClimateMode.CLIMATE_MODE_COOL,
             ClimateMode.CLIMATE_MODE_HEAT,
-            ClimateMode.CLIMATE_MODE_DRY,
             ClimateMode.CLIMATE_MODE_FAN_ONLY,
+            ClimateMode.CLIMATE_MODE_DRY,
         ]))

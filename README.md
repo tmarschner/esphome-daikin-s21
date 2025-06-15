@@ -8,7 +8,7 @@ was the primary inspiration and guide for building this ESPHome component.
 ## Features
 
 - Setpoint temperature.
-- Climate modes AUTO, OFF, COOL, HEAT, DRY, FAN, and HEAT_COOL.
+- Climate modes OFF, HEAT_COOL, COOL, HEAT, FAN_ONLY and DRY.
 - Fan modes auto, silent and 1-5.
 - Swing modes horizontal, vertical, and both.
 
@@ -77,7 +77,7 @@ uart:
 daikin_s21:
   tx_uart: s21_uart
   rx_uart: s21_uart
-  supported_modes:  # auto and off are always supported
+  supported_modes:  # off and heat_cool are always supported
     - cool
     - heat
     - dry
