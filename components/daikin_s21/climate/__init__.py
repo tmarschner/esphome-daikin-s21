@@ -5,6 +5,8 @@ Daikin S21 Mini-Split ESPHome component config validation & code generation.
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import climate, sensor
+from esphome.components.climate import ClimateMode
+from esphome.const import CONF_SUPPORTED_MODES
 from .. import (
     daikin_s21_ns,
     CONF_S21_ID,
@@ -21,6 +23,15 @@ DaikinS21Climate = daikin_s21_ns.class_(
 uart_ns = cg.esphome_ns.namespace("uart")
 UARTComponent = uart_ns.class_("UARTComponent")
 
+SUPPORTED_CLIMATE_MODES_OPTIONS = {
+    "OFF": ClimateMode.CLIMATE_MODE_OFF,  # always available
+    "AUTO": ClimateMode.CLIMATE_MODE_AUTO,  # always available
+    "COOL": ClimateMode.CLIMATE_MODE_COOL,
+    "HEAT": ClimateMode.CLIMATE_MODE_HEAT,
+    "DRY": ClimateMode.CLIMATE_MODE_DRY,
+    "FAN_ONLY": ClimateMode.CLIMATE_MODE_FAN_ONLY,
+}
+
 CONFIG_SCHEMA = cv.All(
     climate.climate_schema(DaikinS21Climate)
     .extend(
@@ -29,6 +40,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(
                 CONF_SETPOINT_INTERVAL, default="300s"
             ): cv.positive_time_period_seconds,
+            cv.Optional(CONF_SUPPORTED_MODES): cv.ensure_list(
+                cv.enum(SUPPORTED_CLIMATE_MODES_OPTIONS, upper=True)
+            ),
         }
     )
     .extend(cv.polling_component_schema("5s"))
@@ -47,3 +61,13 @@ async def to_code(config):
         cg.add(var.set_room_sensor(sens))
         if CONF_SETPOINT_INTERVAL in config:
             cg.add(var.set_setpoint_interval(config[CONF_SETPOINT_INTERVAL]))
+
+    if CONF_SUPPORTED_MODES in config:
+        cg.add(var.set_supported_modes(config[CONF_SUPPORTED_MODES]))
+    else:
+        cg.add(var.set_supported_modes([
+            ClimateMode.CLIMATE_MODE_COOL,
+            ClimateMode.CLIMATE_MODE_HEAT,
+            ClimateMode.CLIMATE_MODE_DRY,
+            ClimateMode.CLIMATE_MODE_FAN_ONLY,
+        ]))
