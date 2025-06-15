@@ -581,11 +581,11 @@ void DaikinS21::setup() {
 #define S21_EXPERIMENTS 1
   queries = {
       "F1", "F5", "F9",
-      "Rd", "RH", "RI", "Ra", "RL", "RG",
+      "Rd", "RH", "RI", "Ra", "RL", "RG", "RN",
       // redundant/worse: "RC", "RF", "RB",
 #if S21_EXPERIMENTS
       // Observed BRP device querying these.
-      // "F2", "F3", "F4", "RN",
+      // "F2", "F3", "F4",
       // "RX", "RD", "M", "FU0F",
       // Query Experiments
       // "RA", 
