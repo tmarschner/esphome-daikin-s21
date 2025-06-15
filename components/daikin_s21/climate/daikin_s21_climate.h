@@ -11,18 +11,6 @@
 namespace esphome {
 namespace daikin_s21 {
 
-// clang-format off
-static const climate::ClimateMode OpModes[] = {
-    climate::CLIMATE_MODE_OFF,  // Unused
-    climate::CLIMATE_MODE_HEAT_COOL,
-    climate::CLIMATE_MODE_DRY,
-    climate::CLIMATE_MODE_COOL,
-    climate::CLIMATE_MODE_HEAT,
-    climate::CLIMATE_MODE_OFF,  // Unused
-    climate::CLIMATE_MODE_FAN_ONLY
-};
-// clang-format on
-
 class DaikinS21Climate : public climate::Climate,
                          public PollingComponent,
                          public DaikinS21Client {
@@ -40,9 +28,6 @@ class DaikinS21Climate : public climate::Climate,
   float get_room_temp_offset();
 
   bool should_check_setpoint(climate::ClimateMode mode);
-  climate::ClimateAction d2e_climate_action();
-  climate::ClimateMode d2e_climate_mode(DaikinClimateMode mode);
-  DaikinClimateMode e2d_climate_mode(climate::ClimateMode mode);
   const std::string d2e_fan_mode(DaikinFanMode mode);
   DaikinFanMode e2d_fan_mode(std::string mode);
   climate::ClimateSwingMode d2e_swing_mode(bool swing_v, bool swing_h);
@@ -76,7 +61,7 @@ class DaikinS21Climate : public climate::Climate,
   void save_setpoint(float value, ESPPreferenceObject &pref);
   void save_setpoint(float value);
   optional<float> load_setpoint(ESPPreferenceObject &pref);
-  optional<float> load_setpoint(DaikinClimateMode mode);
+  optional<float> load_setpoint();
   void set_s21_climate();
 };
 

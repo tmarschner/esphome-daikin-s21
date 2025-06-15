@@ -15,22 +15,58 @@ namespace daikin_s21 {
 
 static const char *const TAG = "daikin_s21";
 
-std::string daikin_climate_mode_to_string(DaikinClimateMode mode) {
+uint8_t climate_mode_to_daikin(const climate::ClimateMode mode) {
   switch (mode) {
-    case DaikinClimateMode::Disabled:
-      return "Disabled";
-    case DaikinClimateMode::Auto:
-      return "Auto";
-    case DaikinClimateMode::Dry:
-      return "Dry";
-    case DaikinClimateMode::Cool:
-      return "Cool";
-    case DaikinClimateMode::Heat:
-      return "Heat";
-    case DaikinClimateMode::Fan:
-      return "Fan";
+    case climate::CLIMATE_MODE_OFF:
+    case climate::CLIMATE_MODE_HEAT_COOL:
+    case climate::CLIMATE_MODE_AUTO:
     default:
-      return "UNKNOWN";
+      return '1';
+      break;
+    case climate::CLIMATE_MODE_HEAT:
+      return '4';
+    case climate::CLIMATE_MODE_COOL:
+      return '3';
+    case climate::CLIMATE_MODE_FAN_ONLY:
+      return '6';
+    case climate::CLIMATE_MODE_DRY:
+      return '2';    
+  }
+}
+
+climate::ClimateMode daikin_to_climate_mode(const uint8_t mode) {
+  switch (mode) {
+    case '0': // heat_cool cooling
+    case '1': // heat_cool
+    case '7': // heat_cool heating
+    default:
+      return climate::CLIMATE_MODE_HEAT_COOL;
+    case '2': // dry
+      return climate::CLIMATE_MODE_DRY;
+    case '3': // cool
+      return climate::CLIMATE_MODE_COOL;
+    case '4': // heat
+      return climate::CLIMATE_MODE_HEAT;
+    case '6': // fan_only
+      return climate::CLIMATE_MODE_FAN_ONLY;      
+  }
+}
+
+climate::ClimateAction daikin_to_climate_action(const uint8_t action) {
+  switch (action) {
+    case '1': // heat_cool
+    default:
+      return climate::CLIMATE_ACTION_IDLE;
+    case '2': // dry
+      return climate::CLIMATE_ACTION_DRYING;
+    case '0': // heat_cool cooling
+    case '3': // cool
+      return climate::CLIMATE_ACTION_COOLING;
+    case '4': // heat
+    case '7': // heat_cool heating
+      return climate::CLIMATE_ACTION_HEATING;
+    case '6': // fan_only
+      return climate::CLIMATE_ACTION_FAN;      
   }
 }
 
@@ -337,8 +373,8 @@ void DaikinS21::tx_next() {
   // select next command / query
   if (activate_climate) {
     tx_command = "D1";
-    payload[0] = pending.power_on ? '1' : '0';
-    payload[1] = static_cast<char>(pending.mode);
+    payload[0] = (pending.mode == climate::CLIMATE_MODE_OFF) ? '0' : '1'; // power
+    payload[1] = climate_mode_to_daikin(pending.mode);
     payload[2] = c10_to_setpoint_byte(lroundf(round(pending.setpoint * 2) / 2 * 10.0));
     payload[3] = static_cast<char>(pending.fan);
     this->serial.send_frame(tx_command, &payload);
@@ -398,9 +434,14 @@ void DaikinS21::parse_ack() {
   switch (rcode[0]) {
     case 'G':  // F -> G
       switch (rcode[1]) {
-        case '1':  // F1 -> Basic State
-          this->active.power_on = (payload[0] == '1');
-          this->active.mode = static_cast<DaikinClimateMode>(payload[1]);
+        case '1':  // F1 -> G1 Basic State
+          if (payload[0] == '0') {
+            this->active.mode = climate::CLIMATE_MODE_OFF;
+            this->climate_action = climate::CLIMATE_ACTION_OFF;
+          } else {
+            this->active.mode = daikin_to_climate_mode(payload[1]);
+            this->climate_action = daikin_to_climate_action(payload[1]);
+          }
           this->active.setpoint = ((payload[2] - 28) * 5);  // Celsius * 10
           if (this->support_RG == false) {  // prefer RG (silent mode not reported here)
             this->active.fan = static_cast<DaikinFanMode>(payload[3]);
@@ -522,7 +563,7 @@ void DaikinS21::handle_nak() {
   ESP_LOGW(TAG, "Rx: NAK from S21 for %s", tx_command);
   if (strcmp(tx_command, *current_query) == 0) {
     ESP_LOGW(TAG, "Removing %s from query pool (assuming unsupported)", tx_command);
-    // current_query iterator will be invalidated, recover index and 
+    // current_query iterator will be invalidated, recover index and recreate
     const auto index = std::distance(queries.begin(), current_query);
     queries.erase(current_query);
     current_query = queries.begin() + index;
@@ -606,10 +647,8 @@ void DaikinS21::update() {
 void DaikinS21::dump_state() {
   ESP_LOGD(TAG, "** BEGIN STATE *****************************");
 
-  ESP_LOGD(TAG, "  Power: %s", ONOFF(this->active.power_on));
-  ESP_LOGD(TAG, "   Mode: %s (%s)",
-           daikin_climate_mode_to_string(this->active.mode).c_str(),
-           this->is_idle() ? "idle" : "active");
+  ESP_LOGD(TAG, " Mode: %s", LOG_STR_ARG(climate::climate_mode_to_string(this->active.mode)));
+  ESP_LOGD(TAG, " Action: %s", LOG_STR_ARG(climate::climate_action_to_string(this->get_climate_action())));
   float degc = this->active.setpoint / 10.0;
   float degf = degc * 1.8 + 32.0;
   ESP_LOGD(TAG, " Target: %.1f C (%.1f F)", degc, degf);
@@ -627,11 +666,9 @@ void DaikinS21::dump_state() {
   ESP_LOGD(TAG, "** END STATE *****************************");
 }
 
-void DaikinS21::set_daikin_climate_settings(bool power_on,
-                                            DaikinClimateMode mode,
+void DaikinS21::set_daikin_climate_settings(climate::ClimateMode mode,
                                             float setpoint,
                                             DaikinFanMode fan_mode) {
-  pending.power_on = power_on;
   pending.mode = mode;
   pending.setpoint = setpoint;
   pending.fan = fan_mode;
@@ -642,6 +679,30 @@ void DaikinS21::set_swing_settings(const bool swing_v, const bool swing_h) {
   pending.swing_v = swing_v;
   pending.swing_h = swing_h;
   activate_swing_mode = true;
+}
+
+climate::ClimateAction DaikinS21::get_climate_action() {
+  switch (get_climate_mode()) {
+    // modes where the compressor needs to be running for the action to be active
+    case climate::CLIMATE_MODE_HEAT_COOL:
+    case climate::CLIMATE_MODE_COOL:
+    case climate::CLIMATE_MODE_HEAT:
+    case climate::CLIMATE_MODE_DRY:
+    case climate::CLIMATE_MODE_AUTO:
+      if (this->compressor_hz == 0) {
+        return climate::CLIMATE_ACTION_IDLE;
+      }
+      break;
+    // modes where the fan needs to be running for the action to be active
+    case climate::CLIMATE_MODE_FAN_ONLY:
+      if (this->fan_rpm == 0) {
+        return climate::CLIMATE_ACTION_IDLE;
+      }
+      break;
+    default:
+      break;
+  }
+  return this->climate_action;
 }
 
 }  // namespace daikin_s21

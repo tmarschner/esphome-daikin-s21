@@ -42,7 +42,7 @@ void DaikinS21Climate::dump_config() {
 void DaikinS21Climate::set_supported_modes(const std::set<climate::ClimateMode> &modes) {
   this->traits_.set_supported_modes(modes);
   this->traits_.add_supported_mode(climate::CLIMATE_MODE_OFF);   // Always available
-  this->traits_.add_supported_mode(climate::CLIMATE_MODE_AUTO);  // Always available
+  this->traits_.add_supported_mode(climate::CLIMATE_MODE_HEAT_COOL);  // Always available
 }
 
 climate::ClimateTraits DaikinS21Climate::traits() {
@@ -126,18 +126,17 @@ void DaikinS21Climate::save_setpoint(float value, ESPPreferenceObject &pref) {
 }
 
 void DaikinS21Climate::save_setpoint(float value) {
-  auto mode = this->e2d_climate_mode(this->mode);
-  optional<float> prev = this->load_setpoint(mode);
+  optional<float> prev = this->load_setpoint();
   // Only save if value is diff from what's already saved.
   if (abs(value - prev.value_or(0.0)) >= SETPOINT_STEP) {
-    switch (mode) {
-      case DaikinClimateMode::Auto:
+    switch (this->mode) {
+      case climate::CLIMATE_MODE_HEAT_COOL:
         this->save_setpoint(value, this->auto_setpoint_pref);
         break;
-      case DaikinClimateMode::Cool:
+      case climate::CLIMATE_MODE_COOL:
         this->save_setpoint(value, this->cool_setpoint_pref);
         break;
-      case DaikinClimateMode::Heat:
+      case climate::CLIMATE_MODE_HEAT:
         this->save_setpoint(value, this->heat_setpoint_pref);
         break;
       default:
@@ -154,16 +153,16 @@ optional<float> DaikinS21Climate::load_setpoint(ESPPreferenceObject &pref) {
   return static_cast<float>(stored_val) / 10.0;
 }
 
-optional<float> DaikinS21Climate::load_setpoint(DaikinClimateMode mode) {
+optional<float> DaikinS21Climate::load_setpoint() {
   optional<float> loaded;
-  switch (mode) {
-    case DaikinClimateMode::Auto:
+  switch (this->mode) {
+    case climate::CLIMATE_MODE_HEAT_COOL:
       loaded = this->load_setpoint(this->auto_setpoint_pref);
       break;
-    case DaikinClimateMode::Cool:
+    case climate::CLIMATE_MODE_COOL:
       loaded = this->load_setpoint(this->cool_setpoint_pref);
       break;
-    case DaikinClimateMode::Heat:
+    case climate::CLIMATE_MODE_HEAT:
       loaded = this->load_setpoint(this->heat_setpoint_pref);
       break;
     default:
@@ -173,10 +172,9 @@ optional<float> DaikinS21Climate::load_setpoint(DaikinClimateMode mode) {
 }
 
 bool DaikinS21Climate::should_check_setpoint(climate::ClimateMode mode) {
-  bool mode_uses_setpoint = mode == climate::CLIMATE_MODE_AUTO ||
+  bool mode_uses_setpoint = mode == climate::CLIMATE_MODE_HEAT_COOL ||
                             mode == climate::CLIMATE_MODE_COOL ||
-                            mode == climate::CLIMATE_MODE_HEAT ||
-                            mode == climate::CLIMATE_MODE_HEAT_COOL;
+                            mode == climate::CLIMATE_MODE_HEAT;
   bool skip_check = false;
   if (this->skip_setpoint_checks > 0) {
     this->skip_setpoint_checks--;
@@ -186,43 +184,6 @@ bool DaikinS21Climate::should_check_setpoint(climate::ClimateMode mode) {
       this->setpoint_interval == 0 || this->last_setpoint_check == 0 ||
       (millis() - this->last_setpoint_check > (this->setpoint_interval * 1000));
   return mode_uses_setpoint & !skip_check && min_passed;
-}
-
-climate::ClimateMode DaikinS21Climate::d2e_climate_mode(
-    DaikinClimateMode mode) {
-  switch (mode) {
-    case DaikinClimateMode::Auto:
-      return climate::CLIMATE_MODE_HEAT_COOL;
-    case DaikinClimateMode::Cool:
-      return climate::CLIMATE_MODE_COOL;
-    case DaikinClimateMode::Heat:
-      return climate::CLIMATE_MODE_HEAT;
-    case DaikinClimateMode::Dry:
-      return climate::CLIMATE_MODE_DRY;
-    case DaikinClimateMode::Fan:
-      return climate::CLIMATE_MODE_FAN_ONLY;
-    case DaikinClimateMode::Disabled:
-    default:
-      return climate::CLIMATE_MODE_OFF;
-  }
-}
-
-DaikinClimateMode DaikinS21Climate::e2d_climate_mode(
-    climate::ClimateMode mode) {
-  switch (mode) {
-    case climate::CLIMATE_MODE_HEAT_COOL:
-      return DaikinClimateMode::Auto;
-    case climate::CLIMATE_MODE_HEAT:
-      return DaikinClimateMode::Heat;
-    case climate::CLIMATE_MODE_COOL:
-      return DaikinClimateMode::Cool;
-    case climate::CLIMATE_MODE_DRY:
-      return DaikinClimateMode::Dry;
-    case climate::CLIMATE_MODE_FAN_ONLY:
-      return DaikinClimateMode::Fan;
-    default:
-      return DaikinClimateMode::Disabled;
-  }
 }
 
 const std::string DaikinS21Climate::d2e_fan_mode(DaikinFanMode mode) {
@@ -263,35 +224,6 @@ DaikinFanMode DaikinS21Climate::e2d_fan_mode(std::string mode) {
   return DaikinFanMode::Auto;
 }
 
-climate::ClimateAction DaikinS21Climate::d2e_climate_action() {
-  if (this->s21->is_idle()) {
-    return climate::CLIMATE_ACTION_IDLE;
-  }
-  switch (this->s21->get_climate_mode()) {
-    uint16_t setpoint, temp_inside;
-
-    case DaikinClimateMode::Auto:
-      setpoint = this->s21->get_setpoint();
-      temp_inside = this->s21->get_temp_inside();
-      if (setpoint > temp_inside) {
-        return climate::CLIMATE_ACTION_HEATING;
-      } else if (setpoint < temp_inside) {
-        return climate::CLIMATE_ACTION_COOLING;
-      }
-      return climate::CLIMATE_ACTION_IDLE;
-    case DaikinClimateMode::Cool:
-      return climate::CLIMATE_ACTION_COOLING;
-    case DaikinClimateMode::Heat:
-      return climate::CLIMATE_ACTION_HEATING;
-    case DaikinClimateMode::Dry:
-      return climate::CLIMATE_ACTION_DRYING;
-    case DaikinClimateMode::Fan:
-      return climate::CLIMATE_ACTION_FAN;
-    default:
-      return climate::CLIMATE_ACTION_OFF;
-  }
-}
-
 climate::ClimateSwingMode DaikinS21Climate::d2e_swing_mode(bool swing_v,
                                                            bool swing_h) {
   if (swing_v && swing_h)
@@ -322,13 +254,8 @@ void DaikinS21Climate::update() {
     ESP_LOGD(TAG, "  Offset: %.1f", this->get_room_temp_offset());
   }
   if (this->s21->is_ready()) {
-    if (this->s21->is_power_on()) {
-      this->mode = this->d2e_climate_mode(this->s21->get_climate_mode());
-      this->action = this->d2e_climate_action();
-    } else {
-      this->mode = climate::CLIMATE_MODE_OFF;
-      this->action = climate::CLIMATE_ACTION_OFF;
-    }
+    this->mode = this->s21->get_climate_mode();
+    this->action = this->s21->get_climate_action();
     this->set_custom_fan_mode_(this->d2e_fan_mode(this->s21->get_fan_mode()));
     this->swing_mode = this->d2e_swing_mode(this->s21->get_swing_v(),
                                             this->s21->get_swing_h());
@@ -344,7 +271,7 @@ void DaikinS21Climate::update() {
       float unexpected_diff = abs(this->expected_s21_setpoint - current_s21_sp);
       if (this->target_temperature == 0.0 || isnanf(this->target_temperature)) {
         // Use stored setpoint for mode, or fall back to use s21's setpoint.
-        auto stored = this->load_setpoint(this->s21->get_climate_mode());
+        auto stored = this->load_setpoint();
         this->target_temperature = stored.value_or(current_s21_sp);
         this->set_s21_climate();
       } else if (unexpected_diff >= SETPOINT_STEP) {
@@ -381,8 +308,7 @@ void DaikinS21Climate::control(const climate::ClimateCall &call) {
       set_basic = true;
       if (!call.get_target_temperature().has_value()) {
         // If call does not include target, then try to use saved target.
-        DaikinClimateMode dmode = this->e2d_climate_mode(this->mode);
-        optional<float> sp = this->load_setpoint(dmode);
+        optional<float> sp = this->load_setpoint();
         if (sp.has_value()) {
           this->target_temperature = nearest_step(sp.value());
         }
@@ -421,8 +347,7 @@ void DaikinS21Climate::set_s21_climate() {
            this->expected_s21_setpoint);
   ESP_LOGI(TAG, "  Fan: %s", this->custom_fan_mode.value().c_str());
   this->s21->set_daikin_climate_settings(
-      this->mode != climate::CLIMATE_MODE_OFF,
-      this->e2d_climate_mode(this->mode), this->expected_s21_setpoint,
+      this->mode, this->expected_s21_setpoint,
       this->e2d_fan_mode(this->custom_fan_mode.value()));
   // HVAC unit seems to take a few seconds to begin reporting mode and setpoint
   // changes back to the controller, so when modifying settings, setpoint checks
