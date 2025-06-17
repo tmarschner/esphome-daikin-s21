@@ -6,14 +6,18 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import sensor
 from esphome.const import (
+    CONF_HUMIDITY,
     CONF_ID,
     UNIT_CELSIUS,
     UNIT_DEGREES,
     UNIT_HERTZ,
+    UNIT_PERCENT,
     UNIT_REVOLUTIONS_PER_MINUTE,
     ICON_FAN,
     ICON_THERMOMETER,
+    ICON_WATER_PERCENT,
     DEVICE_CLASS_FREQUENCY,
+    DEVICE_CLASS_HUMIDITY,
     DEVICE_CLASS_TEMPERATURE,
     STATE_CLASS_MEASUREMENT,
 )
@@ -82,6 +86,13 @@ CONFIG_SCHEMA = (
                 device_class=DEVICE_CLASS_FREQUENCY,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
+            cv.Optional(CONF_HUMIDITY): sensor.sensor_schema(
+                unit_of_measurement=UNIT_PERCENT,
+                icon=ICON_WATER_PERCENT,
+                accuracy_decimals=0,
+                device_class=DEVICE_CLASS_HUMIDITY,
+                state_class=STATE_CLASS_MEASUREMENT,
+            ),
         }
     )
     .extend(S21_CLIENT_SCHEMA)
@@ -120,3 +131,7 @@ async def to_code(config):
     if CONF_COMPRESSOR_FREQUENCY in config:
         sens = await sensor.new_sensor(config[CONF_COMPRESSOR_FREQUENCY])
         cg.add(var.set_compressor_frequency_sensor(sens))
+    
+    if CONF_HUMIDITY in config:
+        sens = await sensor.new_sensor(config[CONF_HUMIDITY])
+        cg.add(var.set_humidity_sensor(sens))

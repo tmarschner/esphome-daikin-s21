@@ -3,12 +3,19 @@
 ESPHome component to control Daikin indoor mini-split units with s21 ports.
 
 Many thanks to the work by [revk][1] on the fantastic [Faikin][2] project, which
-was the primary inspiration and guide for building this ESPHome component.
+was the primary inspiration and guide for building this ESPHome component. In 
+addition, the very active and resourceful community that project has fostered
+that has decoded much of the protocol.
+
+A huge thanks to [joshbenner][4], the original author of this integration. His
+[repository][5] would be my preferred place to commit patches to avoid
+fragmentation, but he lacks the time at the moment to manage the project.
 
 ## Features
 
 - Setpoint temperature.
 - Climate modes OFF, HEAT_COOL, COOL, HEAT, FAN_ONLY and DRY.
+- Independent climate action reporting. See what your unit is trying to do, e.g. heating while in HEAT_COOL.
 - Fan modes auto, silent and 1-5.
 - Swing modes horizontal, vertical, and both.
 
@@ -17,9 +24,13 @@ Sensors:
 * Outside temperature (outside exchanger)
 * Coil temperature (indoor air handler's coil)
 * Fan speed
-* Vertical swing angle (directional louver)
-* Compressor frequency
-  * Note: I have no way to verify no scaling is to be applied to this value, implementation taken from the Faikin project. Open an issue if you can independently measure it.
+* Vertical swing angle (directional flap)
+* Compressor frequency (outside exchanger)
+* Humidity (not supported on all units, will report a consistent 50% if not present)
+
+On multihead systems the outdoor values will be the same (accounting for sampling jitter). It
+could be cleaner to only configure these sensors on your "primary" ESPhome device. One day
+I might look at splitting these off into a separate component.
 
 ## Limitations
 
@@ -27,6 +38,7 @@ Sensors:
 * Does not detect nor support powerful or econo modes.
 * Does not support comfort or presence detection features on some models.
 * Does not interact with the indoor units schedules (do that with HA instead).
+* Currently targets Version 0 protocol support due to the equipment available to the author.
 
 ## Hardware
 
@@ -56,6 +68,8 @@ on having pins inverted differently.
 [1]: https://github.com/revk
 [2]: https://github.com/revk/ESP32-Faikin
 [3]: https://github.com/revk/ESP32-Faikin/tree/main/PCB/Faikin
+[4]: https://github.com/joshbenner
+[5]: https://github.com/joshbenner/esphome-daikin-s21
 
 ## Configuration Example
 
@@ -90,7 +104,7 @@ climate:
   - name: My Daikin
     platform: daikin_s21
     visual:
-      target_temperature: 1
+      target_temperature: 1 # My unit supports 1 degree granularity while the protocol supports 0.5
       current_temperature: 0.5
     # Optional HA sensor used to alter setpoint.
     room_temperature_sensor: room_temp  # See homeassistant sensor below
@@ -110,6 +124,8 @@ sensor:
       name: Swing Vertical Angle
     compressor_frequency:
       name: Compressor Frequency
+    humidity:
+      name: Humidity
   - platform: homeassistant
     id: room_temp
     entity_id: sensor.office_temperature
