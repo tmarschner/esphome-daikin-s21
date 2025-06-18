@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cinttypes>
 #include <numeric>
 #include "s21.h"
@@ -354,15 +355,27 @@ void DaikinSerial::flush_input() {  // would be a nice ESPHome API improvement
   }
 }
 
+bool DaikinS21::is_query_active(const char * const query_str) {
+  return std::find_if(std::begin(queries), std::end(queries), [=](const char * query){ return strcmp(query_str, query) == 0; }) != std::end(queries);
+}
+
+bool DaikinS21::prune_query(const char * const query_str) {
+  const auto it = std::find_if(std::begin(queries), std::end(queries), [=](const char * query){ return strcmp(query_str, query) == 0; });
+  if (it != std::end(queries)) {
+    queries.erase(it);
+    return true;
+  } else {
+    return false;
+  }
+}
+
 void DaikinS21::refine_queries() {
-  // exclude F9 if unit supports the individual sensors with better resolution
-  if (support_Ra && support_RH)
-  {
-    const auto f9 = std::find_if(std::begin(queries), std::end(queries), [](const char * query){ return strcmp(query, "F9") == 0; });
-    if (f9 != std::end(queries))
-    {
-      ESP_LOGD(TAG, "Removing F9 from query pool (better support in Ra and RH)");
-      queries.erase(f9);
+  if (this->ready[ReadyProtocolVersion] == false) {
+    if (determine_protocol_version()) {
+      prune_query("F8");
+      prune_query("GY00");
+      ESP_LOGI(TAG, "Protocol version %u.%u detected", this->protocol_version.major, this->protocol_version.minor);
+      this->ready.set(ReadyProtocolVersion);
     }
   }
 }
@@ -445,21 +458,24 @@ void DaikinS21::parse_ack() {
             this->climate_action = daikin_to_climate_action(payload[1]);
           }
           this->active.setpoint = ((payload[2] - 28) * 5);  // Celsius * 10
-          if (this->support_RG == false) {  // prefer RG (silent mode not reported here)
-            this->active.fan = static_cast<DaikinFanMode>(payload[3]);
-          }
+          // silent mode not reported in payload[3], prefer RG
           this->ready.set(ReadyBasic);
           return;
         case '5':  // F5 -> G5 -- Swing state
           this->active.swing_v = payload[0] & 1;
           this->active.swing_h = payload[0] & 2;
-          this->ready.set(ReadySwing);
-          break;
-        case '8':  // F8 -> G8 -- Protocol version. Always 0 for me.
+          return;
+        case '8':  // F8 -> G8 -- Original protocol version
+          std::copy_n(payload, payload_len, this->G8);
           break;
         case '9':  // F9 -> G9 -- Temperature, better support in RH and Ra (0.5 degree granularity)
           this->temp_inside = temp_f9_byte_to_c10(&payload[0]);
           this->temp_outside = temp_f9_byte_to_c10(&payload[1]);
+          break;
+        case 'Y':
+          if ((rcode[2] == '0') && (rcode[3] == '0')) { // FY00 -> GY00 Newer protocol version
+            this->GY00 = bytes_to_num(payload, payload_len);
+          }
           break;
         default:
           break;
@@ -470,38 +486,40 @@ void DaikinS21::parse_ack() {
       switch (rcode[1]) {
         case 'B':  // Operational mode, single character, same info as G1
           return;
+        case 'C':  // Setpoint, same info as G1
+          this->active.setpoint = temp_bytes_to_c10(payload);
+          return;
+        case 'F':  // Swing mode, same info as G5. ascii hex string: 2F herizontal 1F vertical 7F both 00 off
+          return;
         case 'G':  // Fan mode, better detail than G1 (reports quiet mode)
           this->active.fan = static_cast<daikin_s21::DaikinFanMode>(payload[0]);
-          this->support_RG = true;
           return;
         case 'H':  // Inside temperature
           this->temp_inside = temp_bytes_to_c10(payload);
-          this->support_RH = true;
           return;
         case 'I':  // Coil temperature
           this->temp_coil = temp_bytes_to_c10(payload);
           return;
-        case 'a':  // Outside temperature
-          this->temp_outside = temp_bytes_to_c10(payload);
-          this->support_Ra = true;
-          return;
         case 'L':  // Fan speed
           this->fan_rpm = bytes_to_num(payload, payload_len) * 10;
           return;
-        case 'd':  // Compressor frequency in hertz, idle if 0.
-          this->compressor_hz = bytes_to_num(payload, payload_len);
-          this->ready.set(ReadyCompressor);
-          return;
-        case 'C':  // Setpoint, same info as G1
-          this->active.setpoint = bytes_to_num(payload, payload_len);
-          return;
-        case 'N':
+        case 'M':  // v_swing setpoint
+          break;
+        case 'N':  // Vertical swing angle
           this->swing_vertical_angle = bytes_to_num(payload, 4);
           return;
-        case 'F':  // Swing mode, same info as G5. ascii hex string: 2F herizontal 1F vertical 7F both 00 off
-          break;
-        case 'M':  // related to v_swing somehow
-        case 'X':
+        case 'X':  // Internal control loop target temperature
+          this->temp_target = temp_bytes_to_c10(payload);
+          return;
+        case 'a':  // Outside temperature
+          this->temp_outside = temp_bytes_to_c10(payload);
+          return;
+        case 'd':  // Compressor frequency in hertz, idle if 0.
+          this->compressor_hz = bytes_to_num(payload, payload_len);
+          return;
+        case 'e':  // Humidity, %
+          this->humidity = bytes_to_num(payload, payload_len);
+          return;
         case 'z':
         default:
           if (payload_len > 3) {
@@ -540,11 +558,11 @@ void DaikinS21::parse_ack() {
   // break instead if you want to view their contents
 
   // print everything
-  // if (this->debug_protocol) {
-  //   ESP_LOGD(TAG, "S21: %s -> %s %s", rcode,
-  //            str_repr(payload, payload_len).c_str(),
-  //            hex_repr(payload, payload_len).c_str());
-  // }
+  if (this->debug_protocol) {
+    ESP_LOGD(TAG, "S21: %s -> %s %s", rcode,
+             str_repr(payload, payload_len).c_str(),
+             hex_repr(payload, payload_len).c_str());
+  }
 
   // print changed values
   if (this->debug_protocol) {
@@ -575,18 +593,61 @@ void DaikinS21::handle_nak() {
   }
 }
 
+bool DaikinS21::determine_protocol_version() {
+  static constexpr uint8_t G8_version0[4] = {'0',0,0,0};
+  static constexpr uint8_t G8_version2or3[4] = {'0','2',0,0};
+  static constexpr uint8_t G8_version31plus[4] = {'0','2','0','0'};
+
+  if (std::equal(std::begin(this->G8), std::end(G8), std::begin(G8_version0), std::end(G8_version0))) {
+    this->protocol_version = {0,0};
+    return true;
+  }
+  if (std::equal(std::begin(this->G8), std::end(G8), std::begin(G8_version2or3), std::end(G8_version2or3)) && (is_query_active("GY00") == false)) {
+    this->protocol_version = {2,0};  // NAK rules out 3.0
+    return true;
+  }
+  switch (this->GY00) {
+    case 300:
+      if (std::equal(std::begin(this->G8), std::end(G8), std::begin(G8_version2or3), std::end(G8_version2or3))) {
+        this->protocol_version = {3,0};  // ACK means 3.0 has support for this query
+        return true;
+      }
+      if (std::equal(std::begin(this->G8), std::end(G8), std::begin(G8_version31plus), std::end(G8_version31plus))) {
+        this->protocol_version = {3,1};
+        return true;
+      }
+      break;
+    case 320:
+      this->protocol_version = {3,2};
+      return true;
+    case 340:
+      this->protocol_version = {3,4};
+      return true;
+    default:
+      break;
+  }
+  return false; // not detected yet or unsupported
+}
+
 void DaikinS21::setup() {
   // populate messages to poll
   // clang-format off
 #define S21_EXPERIMENTS 1
   queries = {
-      "F1", "F5", "F9",
-      "Rd", "RH", "RI", "Ra", "RL", "RG", "RN",
-      // redundant/worse: "RC", "RF", "RB",
+      // Protocol version detect:
+      "F8", "FY00",
+      // Standard:
+      "F1", "F5",
+      "RG", "RH", "RI", "RL", "RN", "RX",
+      "Ra", "Rd", "Re",
+      // worse:
+      // "F9", // better support in RH and Ra
+      // redundant:
+      // "RB", "RC", "RF",      
 #if S21_EXPERIMENTS
       // Observed BRP device querying these.
       // "F2", "F3", "F4",
-      // "RX", "RD", "M", "FU0F",
+      // "RD", "M", "FU0F",
       // Query Experiments
       // "RA", 
       // "RE",
@@ -648,11 +709,11 @@ void DaikinS21::update() {
 void DaikinS21::dump_state() {
   ESP_LOGD(TAG, "** BEGIN STATE *****************************");
 
-  ESP_LOGD(TAG, " Mode: %s", LOG_STR_ARG(climate::climate_mode_to_string(this->active.mode)));
+  ESP_LOGD(TAG, "  Proto: v%u.%u", this->protocol_version.major, this->protocol_version.minor);
+  ESP_LOGD(TAG, "   Mode: %s", LOG_STR_ARG(climate::climate_mode_to_string(this->active.mode)));
   ESP_LOGD(TAG, " Action: %s", LOG_STR_ARG(climate::climate_action_to_string(this->get_climate_action())));
-  float degc = this->active.setpoint / 10.0;
-  float degf = degc * 1.8 + 32.0;
-  ESP_LOGD(TAG, " Target: %.1f C (%.1f F)", degc, degf);
+  ESP_LOGD(TAG, " Target: %.1f C (%.1f F)", c10_c(this->active.setpoint),
+           c10_f(this->active.setpoint));
   ESP_LOGD(TAG, "    Fan: %s (%d rpm)",
            daikin_fan_mode_to_string(this->active.fan).c_str(), this->fan_rpm);
   ESP_LOGD(TAG, "  Swing: H:%s V:%s", YESNO(this->active.swing_h),
@@ -663,6 +724,7 @@ void DaikinS21::dump_state() {
            c10_f(this->temp_outside));
   ESP_LOGD(TAG, "   Coil: %.1f C (%.1f F)", c10_c(this->temp_coil),
            c10_f(this->temp_coil));
+  ESP_LOGD(TAG, "  Humid: %u%%", this->get_humidity());
 
   ESP_LOGD(TAG, "** END STATE *****************************");
 }
@@ -684,13 +746,15 @@ void DaikinS21::set_swing_settings(const bool swing_v, const bool swing_h) {
 
 climate::ClimateAction DaikinS21::get_climate_action() {
   switch (get_climate_mode()) {
-    // modes where the compressor needs to be running for the action to be active
+    // modes where the unit is trying to reach a temperature
     case climate::CLIMATE_MODE_HEAT_COOL:
     case climate::CLIMATE_MODE_COOL:
     case climate::CLIMATE_MODE_HEAT:
-    case climate::CLIMATE_MODE_DRY:
     case climate::CLIMATE_MODE_AUTO:
-      if (this->compressor_hz == 0) {
+      if ((this->climate_action == climate::CLIMATE_ACTION_COOLING) && (this->temp_inside <= this->temp_target)) {
+        return climate::CLIMATE_ACTION_IDLE;
+      }
+      if ((this->climate_action == climate::CLIMATE_ACTION_HEATING) && (this->temp_inside >= this->temp_target)) {
         return climate::CLIMATE_ACTION_IDLE;
       }
       break;
@@ -700,6 +764,7 @@ climate::ClimateAction DaikinS21::get_climate_action() {
         return climate::CLIMATE_ACTION_IDLE;
       }
       break;
+    case climate::CLIMATE_MODE_DRY:
     default:
       break;
   }

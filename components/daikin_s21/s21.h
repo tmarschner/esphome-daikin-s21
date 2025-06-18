@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bitset>
+#include <limits>
 #include <vector>
 #include "esphome/components/climate/climate.h"
 #include "esphome/components/uart/uart.h"
@@ -89,7 +90,8 @@ class DaikinS21 : public PollingComponent {
   void update() override;
   void dump_config() override;
 
-  void set_debug_protocol(bool set) { this->debug_protocol = set; this->serial.debug = set; }
+  void set_debug_comms(bool set) { this->serial.debug = set; }
+  void set_debug_protocol(bool set) { this->debug_protocol = set; }
 
   bool is_ready() { return this->ready.all(); }
 
@@ -107,9 +109,10 @@ class DaikinS21 : public PollingComponent {
   float get_temp_inside() { return this->temp_inside / 10.0; }
   float get_temp_outside() { return this->temp_outside / 10.0; }
   float get_temp_coil() { return this->temp_coil / 10.0; }
-  uint16_t get_fan_rpm() { return this->fan_rpm; }
-  uint8_t get_swing_vertical_angle() { return this->swing_vertical_angle; }
-  uint16_t get_compressor_frequency() { return this->compressor_hz; }
+  auto get_fan_rpm() { return this->fan_rpm; }
+  auto get_swing_vertical_angle() { return this->swing_vertical_angle; }
+  auto get_compressor_frequency() { return this->compressor_hz; }
+  auto get_humidity() { return this->humidity; }
 
  protected:
   void dump_state();
@@ -119,17 +122,18 @@ class DaikinS21 : public PollingComponent {
   void handle_nak();
 
   enum RequiredCommand : uint8_t {
+    ReadyProtocolVersion,
     ReadyBasic,
-    ReadySwing,
-    ReadyCompressor,
     ReadyCount, // just for bitset sizing
   };
   std::bitset<ReadyCount> ready = {};
 
   // communication state
+  bool is_query_active(const char * query_str);
+  bool prune_query(const char * query_str);
   std::vector<const char *> queries = {};
   std::vector<const char *>::iterator current_query;
-  const char *tx_command = "";  // used when matching responses - value must have persistent lifetime
+  const char *tx_command = "";  // used when matching responses - value must have persistent lifetime across serial state machine runs
   bool refresh_state = false;
   bool debug_protocol = false;
   std::unordered_map<std::string, std::vector<uint8_t>> val_cache;  // debugging
@@ -142,17 +146,24 @@ class DaikinS21 : public PollingComponent {
 
   // current values
   int16_t temp_inside = 0;
+  int16_t temp_target = 0;
   int16_t temp_outside = 0;
   int16_t temp_coil = 0;
   uint16_t fan_rpm = 0;
   int16_t swing_vertical_angle = 0;
   uint8_t compressor_hz = 0;
+  uint8_t humidity = 0;
   climate::ClimateAction climate_action = climate::CLIMATE_ACTION_OFF;
 
-  //protocol support
-  bool support_RG = false;
-  bool support_RH = false;
-  bool support_Ra = false;
+  // protocol support
+  bool determine_protocol_version();
+  uint8_t G8[4] = {};
+  uint16_t GY00 = 0;
+  struct ProtocolVersion {
+    uint8_t major = std::numeric_limits<uint8_t>::max();
+    uint8_t minor = std::numeric_limits<uint8_t>::max();
+  };
+  ProtocolVersion protocol_version = {};
 };
 
 class DaikinS21Client {
