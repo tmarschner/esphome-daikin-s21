@@ -113,6 +113,7 @@ class DaikinS21 : public PollingComponent {
   auto get_swing_vertical_angle() { return this->swing_vertical_angle; }
   auto get_compressor_frequency() { return this->compressor_hz; }
   auto get_humidity() { return this->humidity; }
+  auto get_demand() { return this->demand; }
 
  protected:
   void dump_state();
@@ -145,6 +146,7 @@ class DaikinS21 : public PollingComponent {
   bool activate_swing_mode = false;
 
   // current values
+  climate::ClimateAction climate_action = climate::CLIMATE_ACTION_OFF;
   int16_t temp_inside = 0;
   int16_t temp_target = 0;
   int16_t temp_outside = 0;
@@ -153,7 +155,7 @@ class DaikinS21 : public PollingComponent {
   int16_t swing_vertical_angle = 0;
   uint8_t compressor_hz = 0;
   uint8_t humidity = 0;
-  climate::ClimateAction climate_action = climate::CLIMATE_ACTION_OFF;
+  uint8_t demand = 0;
 
   // protocol support
   bool determine_protocol_version();
