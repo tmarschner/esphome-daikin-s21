@@ -514,13 +514,15 @@ void DaikinS21::parse_ack() {
         case 'a':  // Outside temperature
           this->temp_outside = temp_bytes_to_c10(payload);
           return;
+        case 'b':  // Demand, 0-15
+          this->demand = temp_bytes_to_c10(payload);
+          return;
         case 'd':  // Compressor frequency in hertz, idle if 0.
           this->compressor_hz = bytes_to_num(payload, payload_len);
           return;
         case 'e':  // Humidity, %
           this->humidity = bytes_to_num(payload, payload_len);
           return;
-        case 'z':
         default:
           if (payload_len > 3) {
             int8_t temp = temp_bytes_to_c10(payload);
@@ -639,11 +641,11 @@ void DaikinS21::setup() {
       // Standard:
       "F1", "F5",
       "RG", "RH", "RI", "RL", "RN", "RX",
-      "Ra", "Rd", "Re",
+      "Ra", "Rb", "Rd", "Re",
       // worse:
       // "F9", // better support in RH and Ra
       // redundant:
-      // "RB", "RC", "RF",      
+      // "RB", "RC", "RF",
 #if S21_EXPERIMENTS
       // Observed BRP device querying these.
       // "F2", "F3", "F4",
@@ -652,7 +654,7 @@ void DaikinS21::setup() {
       // "RA", 
       // "RE",
       // "RK", "RM", "RW",
-      // "Rb", "Re", "Rg", "Rz",
+      // "Rg",
 #endif
   };
   // clang-format on

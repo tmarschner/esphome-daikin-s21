@@ -40,6 +40,7 @@ CONF_COIL_TEMP = "coil_temperature"
 CONF_FAN_SPEED = "fan_speed"
 CONF_SWING_VERTICAL_ANGLE = "swing_vertical_angle"
 CONF_COMPRESSOR_FREQUENCY = "compressor_frequency"
+CONF_DEMAND = "demand"
 
 CONFIG_SCHEMA = (
     cv.COMPONENT_SCHEMA.extend(
@@ -93,6 +94,12 @@ CONFIG_SCHEMA = (
                 device_class=DEVICE_CLASS_HUMIDITY,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
+            cv.Optional(CONF_DEMAND): sensor.sensor_schema(
+                unit_of_measurement=UNIT_PERCENT,
+                icon="mdi:thermometer-chevron-up",
+                accuracy_decimals=0,
+                state_class=STATE_CLASS_MEASUREMENT,
+            ),
         }
     )
     .extend(S21_CLIENT_SCHEMA)
@@ -135,3 +142,7 @@ async def to_code(config):
     if CONF_HUMIDITY in config:
         sens = await sensor.new_sensor(config[CONF_HUMIDITY])
         cg.add(var.set_humidity_sensor(sens))
+
+    if CONF_DEMAND in config:
+        sens = await sensor.new_sensor(config[CONF_DEMAND])
+        cg.add(var.set_demand_sensor(sens))

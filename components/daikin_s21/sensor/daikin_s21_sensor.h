@@ -32,6 +32,9 @@ class DaikinS21Sensor : public PollingComponent, public DaikinS21Client {
   void set_humidity_sensor(sensor::Sensor *sensor) {
     this->humidity_sensor_ = sensor;
   }
+  void set_demand_sensor(sensor::Sensor *sensor) {
+    this->demand_sensor_ = sensor;
+  }
 
  protected:
   sensor::Sensor *temp_inside_sensor_{nullptr};
@@ -41,6 +44,7 @@ class DaikinS21Sensor : public PollingComponent, public DaikinS21Client {
   sensor::Sensor *swing_vertical_angle_sensor_{nullptr};
   sensor::Sensor *compressor_frequency_sensor_{nullptr};
   sensor::Sensor *humidity_sensor_{nullptr};
+  sensor::Sensor *demand_sensor_{nullptr};
 };
 
 }  // namespace daikin_s21

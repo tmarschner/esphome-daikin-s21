@@ -29,6 +29,9 @@ void DaikinS21Sensor::update() {
   if (this->humidity_sensor_ != nullptr) {
     this->humidity_sensor_->publish_state(this->s21->get_humidity());
   }
+  if (this->demand_sensor_ != nullptr) {
+    this->demand_sensor_->publish_state(100.0F * this->s21->get_demand() / 15);
+  }
 }
 
 void DaikinS21Sensor::dump_config() {
