@@ -27,7 +27,7 @@ Sensors:
 * Vertical swing angle (directional flap)
 * Compressor frequency (outside exchanger)
 * Humidity (not supported on all units, will report a consistent 50% if not present)
-* Unit demand from compressor
+* Unit demand from compressor with configurable scaling factor
 
 On multihead systems the outdoor values will be the same (accounting for sampling jitter). It
 could be cleaner to only configure these sensors on your "primary" ESPhome device. One day
@@ -129,6 +129,7 @@ sensor:
       name: Humidity
     demand:
       name: Demand
+      max_value: 9  # optional maximum raw value. determines reported percentage.
   - platform: homeassistant
     id: room_temp
     entity_id: sensor.office_temperature
