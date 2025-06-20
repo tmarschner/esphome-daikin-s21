@@ -646,10 +646,16 @@ void DaikinS21::setup() {
       // "F9", // better support in RH and Ra
       // redundant:
       // "RB", "RC", "RF",
+      // not supported by my units
+      // "F6",
+      // not decoded yet
+      // "F2", "F3", "F4", "F6",
+      // "RzB2",
+      // "RzC3",
+      // "M",
 #if S21_EXPERIMENTS
       // Observed BRP device querying these.
-      // "F2", "F3", "F4",
-      // "RD", "M", "FU0F",
+      // "RD", "FU0F",
       // Query Experiments
       // "RA", 
       // "RE",
@@ -727,6 +733,7 @@ void DaikinS21::dump_state() {
   ESP_LOGD(TAG, "   Coil: %.1f C (%.1f F)", c10_c(this->temp_coil),
            c10_f(this->temp_coil));
   ESP_LOGD(TAG, "  Humid: %u%%", this->get_humidity());
+  ESP_LOGD(TAG, " Demand: %u", this->get_demand());
 
   ESP_LOGD(TAG, "** END STATE *****************************");
 }
@@ -753,10 +760,7 @@ climate::ClimateAction DaikinS21::get_climate_action() {
     case climate::CLIMATE_MODE_COOL:
     case climate::CLIMATE_MODE_HEAT:
     case climate::CLIMATE_MODE_AUTO:
-      if ((this->climate_action == climate::CLIMATE_ACTION_COOLING) && (this->temp_inside <= this->temp_target)) {
-        return climate::CLIMATE_ACTION_IDLE;
-      }
-      if ((this->climate_action == climate::CLIMATE_ACTION_HEATING) && (this->temp_inside >= this->temp_target)) {
+      if (this->demand == 0) {
         return climate::CLIMATE_ACTION_IDLE;
       }
       break;

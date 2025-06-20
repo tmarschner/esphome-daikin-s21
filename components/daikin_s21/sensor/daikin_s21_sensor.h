@@ -35,6 +35,9 @@ class DaikinS21Sensor : public PollingComponent, public DaikinS21Client {
   void set_demand_sensor(sensor::Sensor *sensor) {
     this->demand_sensor_ = sensor;
   }
+  void set_demand_max(uint8_t demand_max) {
+    this->demand_max = demand_max;
+  }
 
  protected:
   sensor::Sensor *temp_inside_sensor_{nullptr};
@@ -45,6 +48,7 @@ class DaikinS21Sensor : public PollingComponent, public DaikinS21Client {
   sensor::Sensor *compressor_frequency_sensor_{nullptr};
   sensor::Sensor *humidity_sensor_{nullptr};
   sensor::Sensor *demand_sensor_{nullptr};
+  uint8_t demand_max = 15;
 };
 
 }  // namespace daikin_s21

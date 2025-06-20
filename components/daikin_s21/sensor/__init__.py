@@ -8,6 +8,7 @@ from esphome.components import sensor
 from esphome.const import (
     CONF_HUMIDITY,
     CONF_ID,
+    CONF_MAX_VALUE,
     UNIT_CELSIUS,
     UNIT_DEGREES,
     UNIT_HERTZ,
@@ -99,6 +100,11 @@ CONFIG_SCHEMA = (
                 icon="mdi:thermometer-chevron-up",
                 accuracy_decimals=0,
                 state_class=STATE_CLASS_MEASUREMENT,
+            )
+            .extend(
+                {
+                    cv.Optional(CONF_MAX_VALUE, default=15): cv.int_,
+                }
             ),
         }
     )
@@ -146,3 +152,5 @@ async def to_code(config):
     if CONF_DEMAND in config:
         sens = await sensor.new_sensor(config[CONF_DEMAND])
         cg.add(var.set_demand_sensor(sens))
+        if CONF_MAX_VALUE in config[CONF_DEMAND]:
+            cg.add(var.set_demand_max(config[CONF_DEMAND][CONF_MAX_VALUE]))
