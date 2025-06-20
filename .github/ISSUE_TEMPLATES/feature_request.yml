@@ -1,0 +1,15 @@
+name: Feature request
+description: Propose something new
+type: Feature
+labels:
+- enhancement
+body:
+- type: textarea
+  attributes: 
+    label: Description of the new feature
+    placeholder: What is the expected behavior of the proposed feature?
+  validations:
+    required: true
+- type: markdown
+  attributes:
+    value: Please limit one request per issue.
