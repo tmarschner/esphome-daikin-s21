@@ -340,7 +340,7 @@ DaikinSerial::Result DaikinSerial::send_frame(const char *cmd, const std::array<
     return Result::Error;
   }
 
-  if (debug) {
+  if (this->debug) {
     if (payload == nullptr) {
       ESP_LOGD(TAG, "Tx: %s", cmd);
     } else {
@@ -397,12 +397,27 @@ bool DaikinS21::prune_query(const char * const query_str) {
 }
 
 void DaikinS21::refine_queries() {
-  if (this->ready[ReadyProtocolVersion] == false) {
-    if (determine_protocol_version()) {
-      prune_query("F8");
-      prune_query("GY00");
-      ESP_LOGI(TAG, "Protocol version %u.%u detected", this->protocol_version.major, this->protocol_version.minor);
-      this->ready.set(ReadyProtocolVersion);
+  if (this->ready.all() == false) {
+    if (this->ready[ReadyProtocolVersion] == false) {
+      if (determine_protocol_version()) {
+        prune_query("F8");
+        prune_query("GY00");
+        ESP_LOGI(TAG, "Protocol version %u.%u detected", this->protocol_version.major, this->protocol_version.minor);
+        this->ready.set(ReadyProtocolVersion);
+      }
+    }
+    if (this->ready[ReadyCapabilities] == false) {
+      if (this->G2_model_info != 0) {
+        prune_query("F2");
+        if (this->support_swing) {
+          this->queries.emplace_back("RN");
+        }
+        if (this->support_humidity) {
+          this->queries.emplace_back("Re");
+        }
+        ESP_LOGI(TAG, "Capabilities detected: model info %c", this->G2_model_info);
+        this->ready.set(ReadyCapabilities);
+      }
     }
   }
 }
@@ -485,15 +500,22 @@ void DaikinS21::parse_ack() {
           // silent mode not reported in payload[3], prefer RG
           this->ready.set(ReadyBasic);
           return;
+        case '2':
+          this->support_swing = payload[0] & 0b0100;
+          this->support_horizontal_swing = payload[0] & 0b1000;
+          this->G2_model_info = (payload[1] & 0b1000) ? 'N': 'C';
+          this->support_humidity = payload[3] & 0b0010;
+          return;
         case '5':  // F5 -> G5 -- Swing state
           this->active.swing = daikin_to_climate_swing_mode(payload[0]);
           return;
         case '8':  // F8 -> G8 -- Original protocol version
           std::copy_n(payload, payload_len, this->G8);
           return;
-        case '9':  // F9 -> G9 -- Temperature, better support in RH and Ra (0.5 degree granularity)
-          this->temp_inside = temp_f9_byte_to_c10(payload[0]);
-          this->temp_outside = temp_f9_byte_to_c10(payload[1]);
+        case '9':  // F9 -> G9 -- Temperature and humidity, better granularity in RH, Ra and Re
+          this->temp_inside = temp_f9_byte_to_c10(payload[0]);  // 1 degree
+          this->temp_outside = temp_f9_byte_to_c10(payload[1]); // 1 degree
+          this->humidity = payload[2] - '0';  // 5%
           return;
         case 'Y':
           if ((rcode[2] == '0') && (rcode[3] == '0')) { // FY00 -> GY00 Newer protocol version
@@ -557,7 +579,7 @@ void DaikinS21::parse_ack() {
       }
       break;
 
-    case 'M':  // todo faikin says 100WH units of power
+    case 'M':  // some sort of model? always "3E53" for me, regardless of head unit
       break;
 
     case 'D':  // D -> D (fake response, see above)
@@ -662,20 +684,23 @@ void DaikinS21::setup() {
       // Protocol version detect:
       "F8", "FY00",
       // Standard:
-      "F1", "F5",
-      "RG", "RH", "RI", "RL", "RN", "RX",
-      "Ra", "Rb", "Rd", "Re",
+      "F1", "F2", "F5",
+      "RG", "RH", "RI", "RL", "RX",
+      "Ra", "Rb", "Rd",
       // worse:
-      // "F9", // better support in RH and Ra
+      // "F9", // better granularity in RH, Ra and Re
       // redundant:
       // "RB", "RC", "RF",
-      // not supported by my units
+      // not supported by my units:
       // "F6",
-      // not decoded yet
-      // "F2", "F3", "F4", "F6",
+      // static:
+      // "M",
+      // unused:
+      // "F3",  // on/off timer. use home assistant.
+      // not handled yet:
+      // "F4",
       // "RzB2",
       // "RzC3",
-      // "M",
 #if S21_EXPERIMENTS
       // Observed BRP device querying these.
       // "RD", "FU0F",
@@ -749,16 +774,30 @@ void DaikinS21::dump_state() {
           c10_f(this->active.setpoint));
   ESP_LOGD(TAG, "    Fan: %s (%d rpm)",
           daikin_fan_mode_to_string(this->active.fan).c_str(), this->fan_rpm);
-  ESP_LOGD(TAG, "  Swing: %s",
-          LOG_STR_ARG(climate::climate_swing_mode_to_string(this->active.swing)));
+  if (this->support_swing) {
+    ESP_LOGD(TAG, "  Swing: %s",
+            LOG_STR_ARG(climate::climate_swing_mode_to_string(this->active.swing)));
+  }
   ESP_LOGD(TAG, " Inside: %.1f C (%.1f F)", c10_c(this->temp_inside),
           c10_f(this->temp_inside));
   ESP_LOGD(TAG, "Outside: %.1f C (%.1f F)", c10_c(this->temp_outside),
           c10_f(this->temp_outside));
   ESP_LOGD(TAG, "   Coil: %.1f C (%.1f F)", c10_c(this->temp_coil),
           c10_f(this->temp_coil));
-  ESP_LOGD(TAG, "  Humid: %u%%", this->get_humidity());
+  if (this->support_humidity) {
+    ESP_LOGD(TAG, "  Humid: %u%%", this->get_humidity());
+  }
   ESP_LOGD(TAG, " Demand: %u", this->get_demand());
+  if (this->debug_protocol) {
+    std::string query_str = "Queries: ";
+    for (const auto q : this->queries) {
+      query_str += q;
+      if (q != queries.back()) {
+        query_str += ",";
+      }
+    }
+    ESP_LOGD(TAG, LOG_STR_ARG(query_str.c_str()));
+  }
 
   ESP_LOGD(TAG, "** END STATE *****************************");
 }
