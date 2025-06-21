@@ -38,7 +38,7 @@ uint8_t climate_mode_to_daikin(const climate::ClimateMode mode) {
 climate::ClimateMode daikin_to_climate_mode(const uint8_t mode) {
   switch (mode) {
     case '0': // heat_cool cooling
-    case '1': // heat_cool
+    case '1': // heat_cool setting
     case '7': // heat_cool heating
     default:
       return climate::CLIMATE_MODE_HEAT_COOL;
@@ -71,7 +71,7 @@ climate::ClimateAction daikin_to_climate_action(const uint8_t action) {
   }
 }
 
-std::string daikin_fan_mode_to_string(DaikinFanMode mode) {
+std::string daikin_fan_mode_to_string(const DaikinFanMode mode) {
   switch (mode) {
     case DaikinFanMode::Auto:
       return "Auto";
@@ -92,6 +92,33 @@ std::string daikin_fan_mode_to_string(DaikinFanMode mode) {
   }
 }
 
+climate::ClimateSwingMode daikin_to_climate_swing_mode(const uint8_t mode) {
+  switch (mode) {
+    case '1':
+      return climate::CLIMATE_SWING_VERTICAL;
+    case '2':
+      return climate::CLIMATE_SWING_HORIZONTAL;
+    case '7':
+      return climate::CLIMATE_SWING_BOTH;
+    default:
+      return climate::CLIMATE_SWING_OFF;
+  }
+}
+
+uint8_t climate_swing_mode_to_daikin(const climate::ClimateSwingMode mode) {
+  switch (mode) {
+    case climate::CLIMATE_SWING_OFF:
+    default:
+      return '0';
+    case climate::CLIMATE_SWING_BOTH:
+      return '7';
+    case climate::CLIMATE_SWING_VERTICAL:
+      return '1';
+    case climate::CLIMATE_SWING_HORIZONTAL:
+      return '2';
+  }
+}
+
 int16_t bytes_to_num(uint8_t *bytes, size_t len) {
   // <ones><tens><hundreds><neg/pos>
   int16_t val = 0;
@@ -105,7 +132,7 @@ int16_t bytes_to_num(uint8_t *bytes, size_t len) {
 
 int16_t temp_bytes_to_c10(uint8_t *bytes) { return bytes_to_num(bytes, 4); }
 
-int16_t temp_f9_byte_to_c10(uint8_t *bytes) { return (*bytes / 2 - 64) * 10; }
+int16_t temp_f9_byte_to_c10(uint8_t byte) { return (byte - 128) * 5; }
 
 uint8_t c10_to_setpoint_byte(int16_t setpoint) {
   return (setpoint + 3) / 5 + 28;
@@ -395,12 +422,9 @@ void DaikinS21::tx_next() {
   }
 
   if (activate_swing_mode) {
-    // todo encoding deviates from faikin
     tx_command = "D5";
-    payload[0] = '0' + (pending.swing_h && pending.swing_v ? 4 : 0)
-                     + (pending.swing_h ? 2 : 0)
-                     + (pending.swing_v ? 1 : 0);
-    payload[1] = pending.swing_v || pending.swing_h ? '?' : '0';
+    payload[0] = climate_swing_mode_to_daikin(pending.swing);
+    payload[1] = (pending.swing != climate::CLIMATE_SWING_OFF) ? '?' : '0';
     payload[2] = '0';
     payload[3] = '0';
     this->serial.send_frame(tx_command, &payload);
@@ -462,21 +486,20 @@ void DaikinS21::parse_ack() {
           this->ready.set(ReadyBasic);
           return;
         case '5':  // F5 -> G5 -- Swing state
-          this->active.swing_v = payload[0] & 1;
-          this->active.swing_h = payload[0] & 2;
+          this->active.swing = daikin_to_climate_swing_mode(payload[0]);
           return;
         case '8':  // F8 -> G8 -- Original protocol version
           std::copy_n(payload, payload_len, this->G8);
-          break;
+          return;
         case '9':  // F9 -> G9 -- Temperature, better support in RH and Ra (0.5 degree granularity)
-          this->temp_inside = temp_f9_byte_to_c10(&payload[0]);
-          this->temp_outside = temp_f9_byte_to_c10(&payload[1]);
-          break;
+          this->temp_inside = temp_f9_byte_to_c10(payload[0]);
+          this->temp_outside = temp_f9_byte_to_c10(payload[1]);
+          return;
         case 'Y':
           if ((rcode[2] == '0') && (rcode[3] == '0')) { // FY00 -> GY00 Newer protocol version
             this->GY00 = bytes_to_num(payload, payload_len);
           }
-          break;
+          return;
         default:
           break;
       }
@@ -718,20 +741,22 @@ void DaikinS21::dump_state() {
   ESP_LOGD(TAG, "** BEGIN STATE *****************************");
 
   ESP_LOGD(TAG, "  Proto: v%u.%u", this->protocol_version.major, this->protocol_version.minor);
-  ESP_LOGD(TAG, "   Mode: %s", LOG_STR_ARG(climate::climate_mode_to_string(this->active.mode)));
-  ESP_LOGD(TAG, " Action: %s", LOG_STR_ARG(climate::climate_action_to_string(this->get_climate_action())));
+  ESP_LOGD(TAG, "   Mode: %s",
+          LOG_STR_ARG(climate::climate_mode_to_string(this->active.mode)));
+  ESP_LOGD(TAG, " Action: %s",
+          LOG_STR_ARG(climate::climate_action_to_string(this->get_climate_action())));
   ESP_LOGD(TAG, " Target: %.1f C (%.1f F)", c10_c(this->active.setpoint),
-           c10_f(this->active.setpoint));
+          c10_f(this->active.setpoint));
   ESP_LOGD(TAG, "    Fan: %s (%d rpm)",
-           daikin_fan_mode_to_string(this->active.fan).c_str(), this->fan_rpm);
-  ESP_LOGD(TAG, "  Swing: H:%s V:%s", YESNO(this->active.swing_h),
-           YESNO(this->active.swing_h));
+          daikin_fan_mode_to_string(this->active.fan).c_str(), this->fan_rpm);
+  ESP_LOGD(TAG, "  Swing: %s",
+          LOG_STR_ARG(climate::climate_swing_mode_to_string(this->active.swing)));
   ESP_LOGD(TAG, " Inside: %.1f C (%.1f F)", c10_c(this->temp_inside),
-           c10_f(this->temp_inside));
+          c10_f(this->temp_inside));
   ESP_LOGD(TAG, "Outside: %.1f C (%.1f F)", c10_c(this->temp_outside),
-           c10_f(this->temp_outside));
+          c10_f(this->temp_outside));
   ESP_LOGD(TAG, "   Coil: %.1f C (%.1f F)", c10_c(this->temp_coil),
-           c10_f(this->temp_coil));
+          c10_f(this->temp_coil));
   ESP_LOGD(TAG, "  Humid: %u%%", this->get_humidity());
   ESP_LOGD(TAG, " Demand: %u", this->get_demand());
 
@@ -747,9 +772,8 @@ void DaikinS21::set_daikin_climate_settings(climate::ClimateMode mode,
   activate_climate = true;
 }
 
-void DaikinS21::set_swing_settings(const bool swing_v, const bool swing_h) {
-  pending.swing_v = swing_v;
-  pending.swing_h = swing_h;
+void DaikinS21::set_swing_settings(const climate::ClimateSwingMode swing) {
+  pending.swing = swing;
   activate_swing_mode = true;
 }
 

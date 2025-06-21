@@ -224,27 +224,6 @@ DaikinFanMode DaikinS21Climate::e2d_fan_mode(std::string mode) {
   return DaikinFanMode::Auto;
 }
 
-climate::ClimateSwingMode DaikinS21Climate::d2e_swing_mode(bool swing_v,
-                                                           bool swing_h) {
-  if (swing_v && swing_h)
-    return climate::CLIMATE_SWING_BOTH;
-  if (swing_v)
-    return climate::CLIMATE_SWING_VERTICAL;
-  if (swing_h)
-    return climate::CLIMATE_SWING_HORIZONTAL;
-  return climate::CLIMATE_SWING_OFF;
-}
-
-bool DaikinS21Climate::e2d_swing_h(climate::ClimateSwingMode mode) {
-  return mode == climate::CLIMATE_SWING_BOTH ||
-         mode == climate::CLIMATE_SWING_HORIZONTAL;
-}
-
-bool DaikinS21Climate::e2d_swing_v(climate::ClimateSwingMode mode) {
-  return mode == climate::CLIMATE_SWING_BOTH ||
-         mode == climate::CLIMATE_SWING_VERTICAL;
-}
-
 void DaikinS21Climate::update() {
   if (this->use_room_sensor()) {
     ESP_LOGD(TAG, "Room temp from external sensor: %.1f %s (%.1f °C)",
@@ -257,8 +236,7 @@ void DaikinS21Climate::update() {
     this->mode = this->s21->get_climate_mode();
     this->action = this->s21->get_climate_action();
     this->set_custom_fan_mode_(this->d2e_fan_mode(this->s21->get_fan_mode()));
-    this->swing_mode = this->d2e_swing_mode(this->s21->get_swing_v(),
-                                            this->s21->get_swing_h());
+    this->swing_mode = this->s21->get_swing_mode();
     this->current_temperature = this->get_effective_current_temperature();
 
     if (this->should_check_setpoint(this->mode)) {
@@ -330,25 +308,22 @@ void DaikinS21Climate::control(const climate::ClimateCall &call) {
   }
 
   if (call.get_swing_mode().has_value()) {
-    climate::ClimateSwingMode swing_mode = call.get_swing_mode().value();
-    this->s21->set_swing_settings(this->e2d_swing_v(swing_mode),
-                                  this->e2d_swing_h(swing_mode));
+    this->s21->set_swing_settings(call.get_swing_mode().value());
   }
 
   this->update();
 }
 
 void DaikinS21Climate::set_s21_climate() {
-  this->expected_s21_setpoint =
-      this->calc_s21_setpoint(this->target_temperature);
+  this->expected_s21_setpoint = this->calc_s21_setpoint(this->target_temperature);
   ESP_LOGI(TAG, "Controlling S21 climate:");
   ESP_LOGI(TAG, "  Mode: %s", LOG_STR_ARG(climate::climate_mode_to_string(this->mode)));
   ESP_LOGI(TAG, "  Setpoint: %.1f (s21: %.1f)", this->target_temperature,
-           this->expected_s21_setpoint);
+          this->expected_s21_setpoint);
   ESP_LOGI(TAG, "  Fan: %s", this->custom_fan_mode.value().c_str());
-  this->s21->set_daikin_climate_settings(
-      this->mode, this->expected_s21_setpoint,
-      this->e2d_fan_mode(this->custom_fan_mode.value()));
+          this->s21->set_daikin_climate_settings(
+          this->mode, this->expected_s21_setpoint,
+          this->e2d_fan_mode(this->custom_fan_mode.value()));
   // HVAC unit seems to take a few seconds to begin reporting mode and setpoint
   // changes back to the controller, so when modifying settings, setpoint checks
   // are skipped to avoid unexpected setpoint updates, especially when changing
