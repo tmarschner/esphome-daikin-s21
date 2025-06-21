@@ -120,8 +120,9 @@ class DaikinS21 : public PollingComponent {
   void parse_ack();
   void handle_nak();
 
-  enum RequiredCommand : uint8_t {
+  enum ReadyCommand : uint8_t {
     ReadyProtocolVersion,
+    ReadyCapabilities,
     ReadyBasic,
     ReadyCount, // just for bitset sizing
   };
@@ -152,7 +153,7 @@ class DaikinS21 : public PollingComponent {
   uint16_t fan_rpm = 0;
   int16_t swing_vertical_angle = 0;
   uint8_t compressor_hz = 0;
-  uint8_t humidity = 0;
+  uint8_t humidity = 50;
   uint8_t demand = 0;
 
   // protocol support
@@ -164,6 +165,10 @@ class DaikinS21 : public PollingComponent {
     uint8_t minor = std::numeric_limits<uint8_t>::max();
   };
   ProtocolVersion protocol_version = {};
+  char G2_model_info = 0;
+  bool support_swing = false;
+  bool support_horizontal_swing = false;
+  bool support_humidity = false;
 };
 
 class DaikinS21Client {
