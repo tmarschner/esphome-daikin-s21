@@ -220,22 +220,19 @@ DaikinSerial::Result DaikinSerial::handle_rx(const uint8_t byte) {
       switch (byte) {
         case ACK:
           if (comm_state == CommState::QueryAck) {
-            comm_state = CommState::QueryStx;
+            this->comm_state = CommState::QueryStx;
           } else {
-            comm_state = CommState::Cooldown;
-            cooldown_length = S21_RESPONSE_TURNAROUND;
+            this->comm_state = CommState::NextTxDelay;
             result = Result::Ack;
           }
           break;
         case NAK:
-          comm_state = CommState::Cooldown;
-          cooldown_length = S21_RESPONSE_TURNAROUND;
+          this->comm_state = CommState::NextTxDelay;
           result = Result::Nak;
           break;
         default:
           ESP_LOGW(TAG, "Rx ACK: Unuexpected 0x%02X", byte);
-          comm_state = CommState::Cooldown;
-          cooldown_length = S21_ERROR_TIMEOUT;
+          this->comm_state = CommState::ErrorDelay;
           result = Result::Error;
           break;
       }
@@ -243,13 +240,12 @@ DaikinSerial::Result DaikinSerial::handle_rx(const uint8_t byte) {
 
     case CommState::QueryStx:
       if (byte == STX) {
-        comm_state = CommState::QueryEtx;
+        this->comm_state = CommState::QueryEtx;
       } else if (byte == ACK) {
         ESP_LOGD(TAG, "Rx STX: Unuexpected extra ACK, ignoring"); // on rare occasions my unit will do this
       } else {
         ESP_LOGW(TAG, "Rx STX: Unuexpected 0x%02X", byte);
-        comm_state = CommState::Cooldown;
-        cooldown_length = S21_ERROR_TIMEOUT;
+        this->comm_state = CommState::ErrorDelay;
         result = Result::Error;
       }
       break;
@@ -263,26 +259,22 @@ DaikinSerial::Result DaikinSerial::handle_rx(const uint8_t byte) {
             str_repr(response.data(), response.size()).c_str(),
             hex_repr(response.data(), response.size()).c_str(),
             byte);
-          comm_state = CommState::Cooldown;
-          cooldown_length = S21_ERROR_TIMEOUT;
+          this->comm_state = CommState::ErrorDelay;
           result = Result::Error;
         }
       } else {
         // frame received, validate checksum
-        const uint8_t checksum = response[response.size() - 1];
+        const uint8_t checksum = response.back();
         response.pop_back();
         const uint8_t calc_checksum = std::accumulate(response.begin(), response.end(), 0U);
         if ((calc_checksum == checksum)
             || ((calc_checksum == STX) && (checksum == ENQ))) {  // protocol avoids STX in message body
-          tx_uart->write_byte(ACK);
-          comm_state = CommState::Cooldown;
-          cooldown_length = S21_RESPONSE_TURNAROUND;
+          this->comm_state = CommState::AckResponseDelay;
           result = Result::Ack;
         } else {
           ESP_LOGW(TAG, "Rx ETX: Checksum mismatch: 0x%02X != 0x%02X (calc from %s)",
             checksum, calc_checksum, hex_repr(response.data(), response.size()).c_str());
-          comm_state = CommState::Cooldown;
-          cooldown_length = S21_ERROR_TIMEOUT;
+          this->comm_state = CommState::ErrorDelay;
           result = Result::Error;
         }
       }
@@ -298,32 +290,60 @@ DaikinSerial::Result DaikinSerial::handle_rx(const uint8_t byte) {
 DaikinSerial::Result DaikinSerial::service() {
   Result result = Result::Busy;
 
+  // nothing to do if idle
+  if (comm_state == CommState::Idle) {
+    return Result::Idle;
+  }
+
+  // all other states have a timeout
+  uint32_t delay_period_ms;
   switch(comm_state) {
-  case CommState::Idle:
-    result = Result::Idle;
-    break;
-
-  case CommState::Cooldown:
-    if ((millis() - last_event_time) > cooldown_length) {
-      comm_state = CommState::Idle;
-      result = Result::Idle;
-    }
-    break;
-
-  default:
-    // all other states are actively receiving data from the unit
-    if ((millis() - last_event_time) > S21_RESPONSE_TIMEOUT) {  // timed out?
-      comm_state = CommState::Idle;
-      result = Result::Timeout;
+    case CommState::AckResponseDelay:
+      delay_period_ms = 45; // official remote delay time before ACKing a response
       break;
-    }
-    while ((result == Result::Busy) && rx_uart->available()) {  // read all available bytes
-      uint8_t byte;
-      rx_uart->read_byte(&byte);
-      last_event_time = millis();
-      result = handle_rx(byte);
-    }
-    break;
+    case CommState::NextTxDelay:
+      delay_period_ms = 35; // official remote delay time between commands
+      break;
+    case CommState::ErrorDelay:
+      delay_period_ms = 3000; // cooldown time when something goes wrong
+      break;
+    default:  // all other states are actively receiving data from the unit
+      delay_period_ms = 250;  // character timeout when expecting a response from the unit
+      break;
+  }
+  bool timeout = (millis() - last_event_time_ms) > delay_period_ms;
+
+  switch(comm_state) {
+    case CommState::AckResponseDelay:
+      if (timeout) {
+        tx_uart->write_byte(ACK);
+        last_event_time_ms = millis();
+        this->comm_state = CommState::NextTxDelay;
+      }
+      break;
+
+    case CommState::NextTxDelay:
+    case CommState::ErrorDelay:
+      if (timeout) {
+        comm_state = CommState::Idle;
+        result = Result::Idle;
+      }
+      break;
+
+    default:
+      // all other states are actively receiving data from the unit
+      if (timeout) {
+        comm_state = CommState::Idle;
+        result = Result::Timeout;
+        break;
+      }
+      while ((result == Result::Busy) && rx_uart->available()) {  // read all available bytes
+        uint8_t byte;
+        rx_uart->read_byte(&byte);
+        last_event_time_ms = millis();
+        result = handle_rx(byte);
+      }
+      break;
   }
 
   return result;
@@ -369,8 +389,8 @@ DaikinSerial::Result DaikinSerial::send_frame(const char *cmd, const std::array<
   tx_uart->write_byte(ETX);
 
   // wait for result
-  last_event_time = millis();
-  comm_state = (payload != nullptr) ? CommState::CommandAck : CommState::QueryAck;
+  last_event_time_ms = millis();
+  this->comm_state = (payload != nullptr) ? CommState::CommandAck : CommState::QueryAck;
 
   return Result::Ack;
 }

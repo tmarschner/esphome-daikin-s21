@@ -49,26 +49,23 @@ public:
   bool debug = false;
 
 private:
-  static constexpr uint32_t S21_RESPONSE_TURNAROUND = 50; // allow some time for the unit to begin listening after it sends
-  static constexpr uint32_t S21_RESPONSE_TIMEOUT = 250; // character timeout when expecting a response from the unit
-  static constexpr uint32_t S21_ERROR_TIMEOUT = 3000; // cooldown time when something goes wrong
-
   Result handle_rx(uint8_t byte);
 
   enum class CommState : uint8_t {
     Idle,
-    Cooldown,
+    CommandAck,
     QueryAck,
     QueryStx,
     QueryEtx,
-    CommandAck,
+    AckResponseDelay,
+    NextTxDelay,
+    ErrorDelay,
   };
 
   uart::UARTComponent *tx_uart{nullptr};
   uart::UARTComponent *rx_uart{nullptr};
   CommState comm_state = CommState::Idle;
-  uint32_t last_event_time = 0;
-  uint32_t cooldown_length = 0;
+  uint32_t last_event_time_ms = 0;
 };
 
 
