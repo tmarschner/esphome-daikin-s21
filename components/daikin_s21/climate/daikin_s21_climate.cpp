@@ -116,6 +116,7 @@ float DaikinS21Climate::calc_s21_setpoint(float target) {
   float offset_target = target + this->get_room_temp_offset();
   ESP_LOGD(TAG, "  target: %.1f", target);
   ESP_LOGD(TAG, "  room_temp_offset: %.1f", this->get_room_temp_offset());
+  ESP_LOGD(TAG, "  nearest_step: %.1f", nearest_step(offset_target));
   return nearest_step(offset_target);
 }
 
