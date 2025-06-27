@@ -99,8 +99,11 @@ float DaikinS21Climate::get_room_temp_offset() {
   if (!this->use_room_sensor()) {
     return 0.0;
   }
+  ESP_LOGD(TAG, "get_room_temp_offset:");
   float room_val = this->room_sensor_degc();
+  ESP_LOGD(TAG, "  room_val: %.1f", room_val);
   float s21_val = this->s21->get_temp_inside();
+  ESP_LOGD(TAG, "  s21_val: %.1f", s21_val);
   return s21_val - room_val;
 }
 
