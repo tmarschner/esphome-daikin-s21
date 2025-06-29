@@ -71,7 +71,7 @@ private:
 
 struct DaikinSettings {
   climate::ClimateMode mode = climate::CLIMATE_MODE_OFF;
-  int16_t setpoint = 23;
+  int16_t setpoint = 23 * 10;
   DaikinFanMode fan = DaikinFanMode::Auto;
   climate::ClimateSwingMode swing = climate::CLIMATE_SWING_OFF;
 };
@@ -89,18 +89,16 @@ class DaikinS21 : public PollingComponent {
   void set_debug_comms(bool set) { this->serial.debug = set; }
   void set_debug_protocol(bool set) { this->debug_protocol = set; }
 
-  bool is_ready() { return this->ready.all(); }
-
-  DaikinFanMode get_fan_mode() { return this->active.fan; }
-  float get_setpoint() { return this->active.setpoint / 10.0; }
-  esphome::climate::ClimateSwingMode get_swing_mode() { return this->active.swing; }
-
   // external command actions
   void set_daikin_climate_settings(climate::ClimateMode mode, float setpoint, DaikinFanMode fan_mode);
   void set_swing_settings(climate::ClimateSwingMode swing);
 
+  bool is_ready() { return this->ready.all(); }
   climate::ClimateMode get_climate_mode() { return this->active.mode; }
   climate::ClimateAction get_climate_action();
+  DaikinFanMode get_fan_mode() { return this->active.fan; }
+  climate::ClimateSwingMode get_swing_mode() { return this->active.swing; }
+  float get_setpoint() { return this->active.setpoint / 10.0F; }
   float get_temp_inside() { return this->temp_inside / 10.0; }
   float get_temp_outside() { return this->temp_outside / 10.0; }
   float get_temp_coil() { return this->temp_coil / 10.0; }

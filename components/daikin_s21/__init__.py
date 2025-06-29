@@ -28,7 +28,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_DEBUG_COMMS, default=False): cv.boolean,
         cv.Optional(CONF_DEBUG_PROTOCOL, default=False): cv.boolean,
     }
-).extend(cv.polling_component_schema("2s"))
+).extend(cv.polling_component_schema("30s"))
 
 S21_CLIENT_SCHEMA = cv.Schema(
     {

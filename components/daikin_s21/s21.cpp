@@ -134,10 +134,6 @@ int16_t temp_bytes_to_c10(uint8_t *bytes) { return bytes_to_num(bytes, 4); }
 
 int16_t temp_f9_byte_to_c10(uint8_t byte) { return (byte - 128) * 5; }
 
-uint8_t c10_to_setpoint_byte(int16_t setpoint) {
-  return (setpoint + 3) / 5 + 28;
-}
-
 #define S21_BAUD_RATE 2400
 #define S21_STOP_BITS 2
 #define S21_DATA_BITS 8
@@ -450,7 +446,7 @@ void DaikinS21::tx_next() {
     tx_command = "D1";
     payload[0] = (pending.mode == climate::CLIMATE_MODE_OFF) ? '0' : '1'; // power
     payload[1] = climate_mode_to_daikin(pending.mode);
-    payload[2] = c10_to_setpoint_byte(lroundf(round(pending.setpoint * 2) / 2 * 10.0));
+    payload[2] = (pending.setpoint / 5) + 28;
     payload[3] = static_cast<char>(pending.fan);
     this->serial.send_frame(tx_command, &payload);
     return;
@@ -501,7 +497,7 @@ void DaikinS21::parse_ack() {
     payload_len = serial.response.size() - rcode_len;
     std::copy_n(serial.response.data(), rcode_len, rcode);
     std::copy_n(serial.response.data() + rcode_len, payload_len, payload);
-    // query successful, move to the next one
+    // query response reveived, move to the next one
     current_query++;
   }
 
@@ -516,8 +512,8 @@ void DaikinS21::parse_ack() {
             this->active.mode = daikin_to_climate_mode(payload[1]);
             this->climate_action = daikin_to_climate_action(payload[1]);
           }
-          this->active.setpoint = ((payload[2] - 28) * 5);  // Celsius * 10
-          // silent mode not reported in payload[3], prefer RG
+          this->active.setpoint = (payload[2] - 28) * 5;  // Celsius * 10
+          // fan mode in payload[3], silent mode not reported so prefer RG
           this->ready.set(ReadyBasic);
           return;
         case '2':
@@ -552,7 +548,7 @@ void DaikinS21::parse_ack() {
         case 'B':  // Operational mode, single character, same info as G1
           return;
         case 'C':  // Setpoint, same info as G1
-          this->active.setpoint = temp_bytes_to_c10(payload);
+          this->active.setpoint = bytes_to_num(payload, payload_len) * 10;
           return;
         case 'F':  // Swing mode, same info as G5. ascii hex string: 2F herizontal 1F vertical 7F both 00 off
           return;
@@ -826,7 +822,7 @@ void DaikinS21::set_daikin_climate_settings(climate::ClimateMode mode,
                                             float setpoint,
                                             DaikinFanMode fan_mode) {
   pending.mode = mode;
-  pending.setpoint = setpoint;
+  pending.setpoint = (static_cast<int16_t>(setpoint * 10 * 2) + 1) / 2;  // round to c10 format
   pending.fan = fan_mode;
   activate_climate = true;
 }
