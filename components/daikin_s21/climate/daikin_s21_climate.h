@@ -28,8 +28,6 @@ class DaikinS21Climate : public climate::Climate,
   float get_room_temp_offset();
 
   bool should_check_setpoint(climate::ClimateMode mode);
-  const std::string d2e_fan_mode(DaikinFanMode mode);
-  DaikinFanMode e2d_fan_mode(std::string mode);
 
   void set_supported_modes(const std::set<esphome::climate::ClimateMode> &modes);
 

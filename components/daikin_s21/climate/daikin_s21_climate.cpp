@@ -4,6 +4,7 @@
 #include "esphome/core/log.h"
 #include "esphome/core/helpers.h"
 #include "daikin_s21_climate.h"
+#include "../daikin_s21_fan_modes.h"
 
 using namespace esphome;
 
@@ -55,7 +56,9 @@ climate::ClimateTraits DaikinS21Climate::traits() {
   this->traits_.set_visual_temperature_step(SETPOINT_STEP);
   this->traits_.set_supports_two_point_target_temperature(false);
 
-  this->traits_.set_supported_custom_fan_modes({"Automatic", "Silent", "1", "2", "3", "4", "5"});
+  std::array<std::string, std::size(supported_daikin_fan_modes)> supported_fan_mode_strings;
+  std::transform(std::begin(supported_daikin_fan_modes), std::end(supported_daikin_fan_modes), std::begin(supported_fan_mode_strings), [](const auto &arg){ return daikin_fan_mode_to_string_ref(arg).str(); } );
+  this->traits_.set_supported_custom_fan_modes({std::begin(supported_fan_mode_strings), std::end(supported_fan_mode_strings)});
 
   this->traits_.set_supported_swing_modes({
       climate::CLIMATE_SWING_OFF,
@@ -186,44 +189,6 @@ bool DaikinS21Climate::should_check_setpoint(climate::ClimateMode mode) {
   return mode_uses_setpoint & !skip_check && min_passed;
 }
 
-const std::string DaikinS21Climate::d2e_fan_mode(DaikinFanMode mode) {
-  switch (mode) {
-    case DaikinFanMode::Speed1:
-      return "1";
-    case DaikinFanMode::Speed2:
-      return "2";
-    case DaikinFanMode::Speed3:
-      return "3";
-    case DaikinFanMode::Speed4:
-      return "4";
-    case DaikinFanMode::Speed5:
-      return "5";
-    case DaikinFanMode::Silent:
-      return "Silent";
-    case DaikinFanMode::Auto:
-    default:
-      return "Automatic";
-  }
-}
-
-DaikinFanMode DaikinS21Climate::e2d_fan_mode(std::string mode) {
-  if (mode == "Automatic")
-    return DaikinFanMode::Auto;
-  if (mode == "Silent")
-    return DaikinFanMode::Silent;
-  if (mode == "1")
-    return DaikinFanMode::Speed1;
-  if (mode == "2")
-    return DaikinFanMode::Speed2;
-  if (mode == "3")
-    return DaikinFanMode::Speed3;
-  if (mode == "4")
-    return DaikinFanMode::Speed4;
-  if (mode == "5")
-    return DaikinFanMode::Speed5;
-  return DaikinFanMode::Auto;
-}
-
 void DaikinS21Climate::update() {
   if (this->use_room_sensor()) {
     ESP_LOGD(TAG, "Room temp from external sensor: %.1f %s (%.1f °C)",
@@ -235,7 +200,7 @@ void DaikinS21Climate::update() {
   if (this->s21->is_ready()) {
     this->mode = this->s21->get_climate_mode();
     this->action = this->s21->get_climate_action();
-    this->set_custom_fan_mode_(this->d2e_fan_mode(this->s21->get_fan_mode()));
+    this->set_custom_fan_mode_(daikin_fan_mode_to_string_ref(this->s21->get_fan_mode()).str());
     this->swing_mode = this->s21->get_swing_mode();
     this->current_temperature = this->get_effective_current_temperature();
 
@@ -321,9 +286,11 @@ void DaikinS21Climate::set_s21_climate() {
   ESP_LOGI(TAG, "  Setpoint: %.1f (s21: %.1f)", this->target_temperature,
           this->expected_s21_setpoint);
   ESP_LOGI(TAG, "  Fan: %s", this->custom_fan_mode.value().c_str());
-          this->s21->set_daikin_climate_settings(
-          this->mode, this->expected_s21_setpoint,
-          this->e2d_fan_mode(this->custom_fan_mode.value()));
+
+  this->s21->set_climate_settings(
+      this->mode,
+      this->expected_s21_setpoint,
+      string_to_daikin_fan_mode(this->custom_fan_mode.value()));
   // HVAC unit seems to take a few seconds to begin reporting mode and setpoint
   // changes back to the controller, so when modifying settings, setpoint checks
   // are skipped to avoid unexpected setpoint updates, especially when changing
