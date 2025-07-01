@@ -29,10 +29,13 @@ class DaikinS21Climate : public climate::Climate,
 
   bool should_check_setpoint(climate::ClimateMode mode);
 
-  void set_supported_modes(const std::set<esphome::climate::ClimateMode> &modes);
+  void set_supported_modes_override(std::set<climate::ClimateMode> modes) { this->supported_modes_override_ = std::move(modes); }
+  void set_supports_current_humidity(bool supports_current_humidity) { this->supports_current_humidity_ = supports_current_humidity; }
 
  protected:
-  esphome::climate::ClimateTraits traits_;
+  climate::ClimateTraits traits() override;
+  optional<std::set<climate::ClimateMode>> supported_modes_override_{};
+  bool supports_current_humidity_{false};
 
   sensor::Sensor *room_sensor_{nullptr};
   float expected_s21_setpoint;
@@ -43,8 +46,6 @@ class DaikinS21Climate : public climate::Climate,
   ESPPreferenceObject auto_setpoint_pref;
   ESPPreferenceObject cool_setpoint_pref;
   ESPPreferenceObject heat_setpoint_pref;
-
-  climate::ClimateTraits traits() override;
 
   bool use_room_sensor();
   bool room_sensor_unit_is_valid();
