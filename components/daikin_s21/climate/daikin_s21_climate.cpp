@@ -340,7 +340,7 @@ void DaikinS21Climate::update() {
                                             this->s21->get_swing_h());
     this->current_temperature = this->get_effective_current_temperature();
 
-    if (this->should_check_setpoint(this->mode)) {
+    if (this->should_check_setpoint(this->mode)) { //does the mode use the setpoint?
       this->last_setpoint_check = millis();
       // Target temperature is stored by climate class, and is used to represent
       // the user's desired temperature. This is distinct from the HVAC unit's
