@@ -33,7 +33,7 @@ Sensors:
 
 On multihead systems the outdoor values will be the same (accounting for sampling jitter). It
 could be cleaner to only configure these sensors on your "primary" ESPhome device. ESPHome is
-adding support for multiple devices, when this is release I will document how to do this.
+adding support for multiple devices, when this is released I will document how to do this.
 
 ## Limitations
 
@@ -60,7 +60,7 @@ On my Daikin units, the S21 port has the following pins:
 * 5 - GND
 
 The S21 plug is JST `EHR-5` and related header `B5B-EH-A(LF)(SN)`, though the
-plug pins are at standard pin header widths.
+plug pins are at standard 2.5mm pin header widths.
 
 ### PCB
 
@@ -110,6 +110,7 @@ climate:
     supports_humidity: true # If your unit supports humidity, it can be reported in the climate component
     # Optional HA sensor used to alter setpoint.
     room_temperature_sensor: room_temp  # See homeassistant sensor below
+    setpoint_interval: 300s # Interval used to adjust the unit's setpoint if the room temperature sensor is specified
     supported_modes:  # off and heat_cool are always supported
       - cool
       - heat

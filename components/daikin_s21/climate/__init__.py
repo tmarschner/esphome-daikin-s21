@@ -45,7 +45,6 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_SUPPORTS_HUMIDITY): cv.boolean,
         }
     )
-    .extend(cv.polling_component_schema("5s"))
     .extend(S21_CLIENT_SCHEMA)
 )
 
