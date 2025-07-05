@@ -6,25 +6,10 @@
 #include "esphome/components/climate/climate.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/component.h"
+#include "daikin_s21_fan_modes.h"
 
 namespace esphome {
 namespace daikin_s21 {
-
-enum class DaikinFanMode : uint8_t {
-  Auto = 'A',
-  Silent = 'B',
-  Speed1 = '3',
-  Speed2 = '4',
-  Speed3 = '5',
-  Speed4 = '6',
-  Speed5 = '7',
-};
-
-std::string daikin_fan_mode_to_string(DaikinFanMode mode);
-
-inline float c10_c(int16_t c10) { return c10 / 10.0; }
-inline float c10_f(int16_t c10) { return c10_c(c10) * 1.8 + 32.0; }
-
 
 class DaikinSerial {
 public:
@@ -40,7 +25,9 @@ public:
     Busy,
   };
   
-  void set_uarts(uart::UARTComponent *tx, uart::UARTComponent *rx);
+  DaikinSerial() {};
+  DaikinSerial(uart::UARTComponent *tx, uart::UARTComponent *rx);
+  
   Result service();
   Result send_frame(const char *cmd, const std::array<char, S21_PAYLOAD_SIZE> *payload = nullptr);
   void flush_input();
@@ -79,18 +66,17 @@ struct DaikinSettings {
 
 class DaikinS21 : public PollingComponent {
  public:
-  DaikinSerial serial;
-
   void setup() override;
   void loop() override;
   void update() override;
   void dump_config() override;
 
+  void set_uarts(uart::UARTComponent *tx, uart::UARTComponent *rx) { this->serial = {tx, rx}; }
   void set_debug_comms(bool set) { this->serial.debug = set; }
   void set_debug_protocol(bool set) { this->debug_protocol = set; }
 
   // external command actions
-  void set_daikin_climate_settings(climate::ClimateMode mode, float setpoint, DaikinFanMode fan_mode);
+  void set_climate_settings(climate::ClimateMode mode, float setpoint, DaikinFanMode fan_mode);
   void set_swing_settings(climate::ClimateSwingMode swing);
 
   bool is_ready() { return this->ready.all(); }
@@ -109,6 +95,8 @@ class DaikinS21 : public PollingComponent {
   auto get_demand() { return this->demand; }
 
  protected:
+  DaikinSerial serial;
+
   void dump_state();
   void refine_queries();
   void tx_next();

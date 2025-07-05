@@ -4,15 +4,14 @@
 #include "esphome/core/log.h"
 #include "esphome/core/helpers.h"
 #include "daikin_s21_climate.h"
+#include "../daikin_s21_fan_modes.h"
 
 using namespace esphome;
 
 namespace esphome {
 namespace daikin_s21 {
 
-#define SETPOINT_MIN 10
-#define SETPOINT_MAX 32
-#define SETPOINT_STEP 0.5f
+constexpr float SETPOINT_STEP = 0.5F; // ESPHome thermostat calculations -- unit's internal support and visual step may differ
 
 static const char *const TAG = "daikin_s21.climate";
 
@@ -39,32 +38,48 @@ void DaikinS21Climate::dump_config() {
   this->dump_traits_(TAG);
 }
 
-void DaikinS21Climate::set_supported_modes(const std::set<climate::ClimateMode> &modes) {
-  this->traits_.set_supported_modes(modes);
-  this->traits_.add_supported_mode(climate::CLIMATE_MODE_OFF);   // Always available
-  this->traits_.add_supported_mode(climate::CLIMATE_MODE_HEAT_COOL);  // Always available
-}
-
 climate::ClimateTraits DaikinS21Climate::traits() {
+  auto traits = climate::ClimateTraits();
+  // Base
+  traits.set_supports_action(true);
+  traits.set_supports_current_temperature(true);
+  traits.set_visual_min_temperature(10.0F);
+  traits.set_visual_max_temperature(32.0F);
+  traits.set_visual_current_temperature_step(0.5F);
+  traits.set_visual_target_temperature_step(1.0F);
 
-  this->traits_.set_supports_action(true);
+  traits.set_supported_modes({
+      climate::CLIMATE_MODE_OFF,
+      climate::CLIMATE_MODE_HEAT_COOL,
+      climate::CLIMATE_MODE_COOL,
+      climate::CLIMATE_MODE_HEAT,
+      climate::CLIMATE_MODE_FAN_ONLY,
+      climate::CLIMATE_MODE_DRY,
+  });
 
-  this->traits_.set_supports_current_temperature(true);
-  this->traits_.set_visual_min_temperature(SETPOINT_MIN);
-  this->traits_.set_visual_max_temperature(SETPOINT_MAX);
-  this->traits_.set_visual_temperature_step(SETPOINT_STEP);
-  this->traits_.set_supports_two_point_target_temperature(false);
+  std::array<std::string, std::size(supported_daikin_fan_modes)> supported_fan_mode_strings;
+  std::transform(std::begin(supported_daikin_fan_modes), std::end(supported_daikin_fan_modes), std::begin(supported_fan_mode_strings), [](const auto &arg){ return daikin_fan_mode_to_string_ref(arg).str(); } );
+  traits.set_supported_custom_fan_modes({std::begin(supported_fan_mode_strings), std::end(supported_fan_mode_strings)});
 
-  this->traits_.set_supported_custom_fan_modes({"Automatic", "Silent", "1", "2", "3", "4", "5"});
-
-  this->traits_.set_supported_swing_modes({
+  traits.set_supported_swing_modes({
       climate::CLIMATE_SWING_OFF,
       climate::CLIMATE_SWING_BOTH,
       climate::CLIMATE_SWING_VERTICAL,
       climate::CLIMATE_SWING_HORIZONTAL,
   });
 
-  return this->traits_;
+  // Overrides
+  if (this->supports_current_humidity_) {
+    traits.set_supports_current_humidity(this->supports_current_humidity_);
+  }
+
+  if (this->supported_modes_override_.has_value()) {
+    traits.set_supported_modes(this->supported_modes_override_.value());
+    traits.add_supported_mode(climate::CLIMATE_MODE_OFF);   // Always available
+    traits.add_supported_mode(climate::CLIMATE_MODE_HEAT_COOL);  // Always available
+  }
+
+  return traits;
 }
 
 bool DaikinS21Climate::use_room_sensor() {
@@ -183,45 +198,7 @@ bool DaikinS21Climate::should_check_setpoint(climate::ClimateMode mode) {
   bool min_passed =
       this->setpoint_interval == 0 || this->last_setpoint_check == 0 ||
       (millis() - this->last_setpoint_check > (this->setpoint_interval * 1000));
-  return mode_uses_setpoint & !skip_check && min_passed;
-}
-
-const std::string DaikinS21Climate::d2e_fan_mode(DaikinFanMode mode) {
-  switch (mode) {
-    case DaikinFanMode::Speed1:
-      return "1";
-    case DaikinFanMode::Speed2:
-      return "2";
-    case DaikinFanMode::Speed3:
-      return "3";
-    case DaikinFanMode::Speed4:
-      return "4";
-    case DaikinFanMode::Speed5:
-      return "5";
-    case DaikinFanMode::Silent:
-      return "Silent";
-    case DaikinFanMode::Auto:
-    default:
-      return "Automatic";
-  }
-}
-
-DaikinFanMode DaikinS21Climate::e2d_fan_mode(std::string mode) {
-  if (mode == "Automatic")
-    return DaikinFanMode::Auto;
-  if (mode == "Silent")
-    return DaikinFanMode::Silent;
-  if (mode == "1")
-    return DaikinFanMode::Speed1;
-  if (mode == "2")
-    return DaikinFanMode::Speed2;
-  if (mode == "3")
-    return DaikinFanMode::Speed3;
-  if (mode == "4")
-    return DaikinFanMode::Speed4;
-  if (mode == "5")
-    return DaikinFanMode::Speed5;
-  return DaikinFanMode::Auto;
+  return mode_uses_setpoint && !skip_check && min_passed;
 }
 
 void DaikinS21Climate::update() {
@@ -235,9 +212,10 @@ void DaikinS21Climate::update() {
   if (this->s21->is_ready()) {
     this->mode = this->s21->get_climate_mode();
     this->action = this->s21->get_climate_action();
-    this->set_custom_fan_mode_(this->d2e_fan_mode(this->s21->get_fan_mode()));
+    this->set_custom_fan_mode_(daikin_fan_mode_to_string_ref(this->s21->get_fan_mode()).str());
     this->swing_mode = this->s21->get_swing_mode();
     this->current_temperature = this->get_effective_current_temperature();
+    this->current_humidity = this->s21->get_humidity();
 
     if (this->should_check_setpoint(this->mode)) {
       this->last_setpoint_check = millis();
@@ -275,8 +253,6 @@ void DaikinS21Climate::update() {
 }
 
 void DaikinS21Climate::control(const climate::ClimateCall &call) {
-  float setpoint = this->target_temperature;
-  std::string fan_mode = this->custom_fan_mode.value_or("Automatic");
   bool set_basic = false;
 
   if (call.get_mode().has_value()) {
@@ -321,9 +297,11 @@ void DaikinS21Climate::set_s21_climate() {
   ESP_LOGI(TAG, "  Setpoint: %.1f (s21: %.1f)", this->target_temperature,
           this->expected_s21_setpoint);
   ESP_LOGI(TAG, "  Fan: %s", this->custom_fan_mode.value().c_str());
-          this->s21->set_daikin_climate_settings(
-          this->mode, this->expected_s21_setpoint,
-          this->e2d_fan_mode(this->custom_fan_mode.value()));
+
+  this->s21->set_climate_settings(
+      this->mode,
+      this->expected_s21_setpoint,
+      string_to_daikin_fan_mode(this->custom_fan_mode.value()));
   // HVAC unit seems to take a few seconds to begin reporting mode and setpoint
   // changes back to the controller, so when modifying settings, setpoint checks
   // are skipped to avoid unexpected setpoint updates, especially when changing

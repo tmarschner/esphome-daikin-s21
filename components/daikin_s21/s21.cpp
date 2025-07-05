@@ -71,27 +71,6 @@ climate::ClimateAction daikin_to_climate_action(const uint8_t action) {
   }
 }
 
-std::string daikin_fan_mode_to_string(const DaikinFanMode mode) {
-  switch (mode) {
-    case DaikinFanMode::Auto:
-      return "Auto";
-    case DaikinFanMode::Silent:
-      return "Silent";
-    case DaikinFanMode::Speed1:
-      return "1";
-    case DaikinFanMode::Speed2:
-      return "2";
-    case DaikinFanMode::Speed3:
-      return "3";
-    case DaikinFanMode::Speed4:
-      return "4";
-    case DaikinFanMode::Speed5:
-      return "5";
-    default:
-      return "UNKNOWN";
-  }
-}
-
 climate::ClimateSwingMode daikin_to_climate_swing_mode(const uint8_t mode) {
   switch (mode) {
     case '1':
@@ -130,24 +109,15 @@ int16_t bytes_to_num(uint8_t *bytes, size_t len) {
   return val;
 }
 
-int16_t temp_bytes_to_c10(uint8_t *bytes) { return bytes_to_num(bytes, 4); }
-
-int16_t temp_f9_byte_to_c10(uint8_t byte) { return (byte - 128) * 5; }
-
-#define S21_BAUD_RATE 2400
-#define S21_STOP_BITS 2
-#define S21_DATA_BITS 8
-#define S21_PARITY uart::UART_CONFIG_PARITY_EVEN
-
-void DaikinSerial::set_uarts(uart::UARTComponent *tx, uart::UARTComponent *rx) {
+DaikinSerial::DaikinSerial(uart::UARTComponent *tx, uart::UARTComponent *rx) {
   this->tx_uart = tx;
   this->rx_uart = rx;
 
   for (auto *uart : {this->tx_uart, this->rx_uart}) {
-    uart->set_baud_rate(S21_BAUD_RATE);
-    uart->set_stop_bits(S21_STOP_BITS);
-    uart->set_data_bits(S21_DATA_BITS);
-    uart->set_parity(S21_PARITY);
+    uart->set_baud_rate(2400);
+    uart->set_stop_bits(2);
+    uart->set_data_bits(8);
+    uart->set_parity(uart::UART_CONFIG_PARITY_EVEN);
     uart->load_settings();
   }
 }
@@ -480,6 +450,11 @@ void DaikinS21::tx_next() {
   }
 }
 
+static int16_t temp_bytes_to_c10(uint8_t *bytes) { return bytes_to_num(bytes, 4); }
+static constexpr int16_t temp_f9_byte_to_c10(uint8_t byte) { return (byte - 128) * 5; }
+static constexpr float c10_c(int16_t c10) { return c10 / 10.0; }
+static constexpr float c10_f(int16_t c10) { return c10_c(c10) * 1.8 + 32.0; }
+
 void DaikinS21::parse_ack() {
   char rcode[DaikinSerial::S21_MAX_COMMAND_SIZE + 1] = {};
   uint8_t payload[DaikinSerial::S21_PAYLOAD_SIZE];
@@ -548,7 +523,7 @@ void DaikinS21::parse_ack() {
         case 'B':  // Operational mode, single character, same info as G1
           return;
         case 'C':  // Setpoint, same info as G1
-          this->active.setpoint = bytes_to_num(payload, payload_len) * 10;
+          this->active.setpoint = bytes_to_num(payload, payload_len) * 10;  // whole degrees C
           return;
         case 'F':  // Swing mode, same info as G5. ascii hex string: 2F herizontal 1F vertical 7F both 00 off
           return;
@@ -588,8 +563,8 @@ void DaikinS21::parse_ack() {
           if (payload_len > 3) {
             int8_t temp = temp_bytes_to_c10(payload);
             ESP_LOGD(TAG, "Unknown sensor: %s -> %s -> %.1f C (%.1f F)", rcode,
-                     hex_repr(payload, payload_len).c_str(), c10_c(temp),
-                     c10_f(temp));
+                     hex_repr(payload, payload_len).c_str(),
+                     c10_c(temp), c10_f(temp));
           }
           break;
       }
@@ -786,20 +761,20 @@ void DaikinS21::dump_state() {
           LOG_STR_ARG(climate::climate_mode_to_string(this->active.mode)));
   ESP_LOGD(TAG, " Action: %s",
           LOG_STR_ARG(climate::climate_action_to_string(this->get_climate_action())));
-  ESP_LOGD(TAG, " Target: %.1f C (%.1f F)", c10_c(this->active.setpoint),
-          c10_f(this->active.setpoint));
+  ESP_LOGD(TAG, " Target: %.1f C (%.1f F)",
+          c10_c(this->active.setpoint), c10_f(this->active.setpoint));
   ESP_LOGD(TAG, "    Fan: %s (%d rpm)",
-          daikin_fan_mode_to_string(this->active.fan).c_str(), this->fan_rpm);
+          daikin_fan_mode_to_string_ref(this->active.fan).c_str(), this->fan_rpm);
   if (this->support_swing) {
     ESP_LOGD(TAG, "  Swing: %s",
             LOG_STR_ARG(climate::climate_swing_mode_to_string(this->active.swing)));
   }
-  ESP_LOGD(TAG, " Inside: %.1f C (%.1f F)", c10_c(this->temp_inside),
-          c10_f(this->temp_inside));
-  ESP_LOGD(TAG, "Outside: %.1f C (%.1f F)", c10_c(this->temp_outside),
-          c10_f(this->temp_outside));
-  ESP_LOGD(TAG, "   Coil: %.1f C (%.1f F)", c10_c(this->temp_coil),
-          c10_f(this->temp_coil));
+  ESP_LOGD(TAG, " Inside: %.1f C (%.1f F)",
+          c10_c(this->temp_inside), c10_f(this->temp_inside));
+  ESP_LOGD(TAG, "Outside: %.1f C (%.1f F)",
+          c10_c(this->temp_outside), c10_f(this->temp_outside));
+  ESP_LOGD(TAG, "   Coil: %.1f C (%.1f F)",
+          c10_c(this->temp_coil), c10_f(this->temp_coil));
   if (this->support_humidity) {
     ESP_LOGD(TAG, "  Humid: %u%%", this->get_humidity());
   }
@@ -818,7 +793,7 @@ void DaikinS21::dump_state() {
   ESP_LOGD(TAG, "** END STATE *****************************");
 }
 
-void DaikinS21::set_daikin_climate_settings(climate::ClimateMode mode,
+void DaikinS21::set_climate_settings(climate::ClimateMode mode,
                                             float setpoint,
                                             DaikinFanMode fan_mode) {
   pending.mode = mode;

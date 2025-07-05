@@ -13,11 +13,13 @@ fragmentation, but he lacks the time at the moment to manage the project.
 
 ## Features
 
+Climate:
 - Setpoint temperature.
-- Climate modes OFF, HEAT_COOL, COOL, HEAT, FAN_ONLY and DRY.
+- Selectable climate modes OFF, HEAT_COOL, COOL, HEAT, FAN_ONLY and DRY.
 - Independent climate action reporting. See what your unit is trying to do, e.g. heating while in HEAT_COOL.
 - Fan modes auto, silent and 1-5.
 - Swing modes horizontal, vertical, and both.
+- Optional humidity reporting.
 
 Sensors:
 * Inside temperature (usually measured at indoor air handler return)
@@ -30,12 +32,13 @@ Sensors:
 * Unit demand from compressor with configurable scaling factor
 
 On multihead systems the outdoor values will be the same (accounting for sampling jitter). It
-could be cleaner to only configure these sensors on your "primary" ESPhome device. One day
-I might look at splitting these off into a separate component.
+could be cleaner to only configure these sensors on your "primary" ESPhome device. ESPHome is
+adding support for multiple devices, when this is release I will document how to do this.
 
 ## Limitations
 
 * This code has only been tested on ESP32 pico and ESP32-S3.
+* Tested with 4MXl36TVJU outdoor unit and CTXS07LVJU, FTXS12LVJU, FTXS15LVJU indoor units.
 * Does not detect nor support powerful or econo modes.
 * Does not support comfort or presence detection features on some models.
 * Does not interact with the indoor units schedules (do that with HA instead).
@@ -95,20 +98,23 @@ uart:
 daikin_s21:
   tx_uart: s21_uart
   rx_uart: s21_uart
-  supported_modes:  # off and heat_cool are always supported
-    - cool
-    - heat
-    - dry
-    - fan_only
 
 climate:
   - name: My Daikin
     platform: daikin_s21
-    visual:
-      target_temperature: 1 # My unit supports 1 degree granularity while the protocol supports 0.5
-      current_temperature: 0.5
+    # Settings from ESPHome Climate component:
+    # visual:
+    #   target_temperature: 1
+    #   current_temperature: 0.5
+    # Settings from DaikinS21Climate:
+    supports_humidity: true # If your unit supports humidity, it can be reported in the climate component
     # Optional HA sensor used to alter setpoint.
     room_temperature_sensor: room_temp  # See homeassistant sensor below
+    supported_modes:  # off and heat_cool are always supported
+      - cool
+      - heat
+      - dry
+      - fan_only
 
 # Optional additional sensors.
 sensor:
