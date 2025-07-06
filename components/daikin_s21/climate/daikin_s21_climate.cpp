@@ -308,6 +308,7 @@ void DaikinS21Climate::control(const climate::ClimateCall &call) {
     this->swing_mode = call.get_swing_mode().value();
   }
   this->set_s21_climate();
+  this->publish_state();
 }
 
 /**
