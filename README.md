@@ -135,8 +135,13 @@ sensor:
     humidity:
       name: Humidity
     demand:
-      name: Demand
-      max_value: 9  # optional maximum raw value. determines reported percentage.
+      name: Demand  # 0-15 demand units, use filter to map to %
+      filters:
+        - calibrate_linear:
+           method: exact  # default of least_squares results in -0% when 0
+           datapoints:
+             - 0 -> 0
+             - 15 -> 100
   - platform: homeassistant
     id: room_temp
     entity_id: sensor.office_temperature
