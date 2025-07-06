@@ -21,7 +21,7 @@ CONF_SUPPORTS_HUMIDITY = "supports_humidity"
 CONF_SETPOINT_INTERVAL = "setpoint_interval"
 
 DaikinS21Climate = daikin_s21_ns.class_(
-    "DaikinS21Climate", climate.Climate, cg.PollingComponent, DaikinS21Client
+    "DaikinS21Climate", climate.Climate, cg.Component, DaikinS21Client
 )
 
 SUPPORTED_CLIMATE_MODES_OPTIONS = {
@@ -45,7 +45,6 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_SUPPORTS_HUMIDITY): cv.boolean,
         }
     )
-    .extend(cv.polling_component_schema("5s"))
     .extend(S21_CLIENT_SCHEMA)
 )
 
