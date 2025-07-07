@@ -133,6 +133,7 @@ class DaikinS21 : public PollingComponent {
 
   enum ReadyCommand : uint8_t {
     ReadyProtocolVersion,
+    ReadySensorReadout,
     ReadyCapabilities,
     ReadyBasic,
     ReadyCount, // just for bitset sizing
@@ -147,6 +148,7 @@ class DaikinS21 : public PollingComponent {
   const char *tx_command{""};  // used when matching responses - value must have persistent lifetime across serial state machine runs
   bool debug_protocol{false};
   std::unordered_map<std::string, std::vector<uint8_t>> val_cache{};  // debugging
+  std::vector<const char *> nak_queries{};   // debugging
 
   // settings
   DaikinSettings active{};
@@ -168,8 +170,9 @@ class DaikinS21 : public PollingComponent {
 
   // protocol support
   bool determine_protocol_version();
-  uint8_t G8[4]{};
+  std::array<uint8_t,4> G8{};
   uint16_t GY00{0};
+  std::array<uint8_t,4> M{};
   struct ProtocolVersion {
     uint8_t major{std::numeric_limits<uint8_t>::max()};
     uint8_t minor{std::numeric_limits<uint8_t>::max()};

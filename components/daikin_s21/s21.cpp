@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cinttypes>
 #include <numeric>
+#include <string>
 #include "s21.h"
 
 using namespace esphome;
@@ -391,9 +392,18 @@ void DaikinS21::refine_queries() {
       if (determine_protocol_version()) {
         prune_query("F8");
         prune_query("GY00");
+        prune_query("M");
         ESP_LOGI(TAG, "Protocol version %u.%u detected", this->protocol_version.major, this->protocol_version.minor);
         this->ready.set(ReadyProtocolVersion);
       }
+    }
+    // Some units don't support more granular sensor queries
+    if (this->ready[ReadySensorReadout] == false) {
+      // TODO there's a chance that communication doesn't work at all so we didn't receive a NAK and these are still active. add an "acked" tracker to the queries.
+      if (DaikinS21::is_query_active("RH") && DaikinS21::is_query_active("Ra")) {
+        prune_query("F9");  // support for discrete granular sensors, no need for inferior consolidated query
+      }
+      this->ready.set(ReadySensorReadout);
     }
     if (this->ready[ReadyCapabilities] == false) {
       if (this->G2_model_info != 0) {
@@ -509,12 +519,14 @@ void DaikinS21::parse_ack() {
           this->active.swing = daikin_to_climate_swing_mode(payload[0]);
           return;
         case '8':  // F8 -> G8 -- Original protocol version
-          std::copy_n(payload, payload_len, this->G8);
+          std::copy_n(std::begin(payload), std::min(payload_len, this->G8.size()), std::begin(this->G8));
           return;
         case '9':  // F9 -> G9 -- Temperature and humidity, better granularity in RH, Ra and Re
           this->temp_inside = temp_f9_byte_to_c10(payload[0]);  // 1 degree
           this->temp_outside = temp_f9_byte_to_c10(payload[1]); // 1 degree
-          this->humidity = payload[2] - '0';  // 5%
+          if (this->support_humidity) { // some users report 0xFF, try to rely on capabilities detection
+            this->humidity = payload[2] - '0';  // 5%
+          }
           return;
         case 'Y':
           if ((rcode[2] == '0') && (rcode[3] == '0')) { // FY00 -> GY00 Newer protocol version
@@ -579,7 +591,8 @@ void DaikinS21::parse_ack() {
       break;
 
     case 'M':  // some sort of model? always "3E53" for me, regardless of head unit
-      break;
+      std::copy_n(std::begin(payload), std::min(payload_len, this->M.size()), std::begin(this->M));
+      return;
 
     case 'D':  // D -> D (fake response, see above)
       switch (rcode[1]) {
@@ -628,6 +641,7 @@ void DaikinS21::handle_nak() {
   ESP_LOGW(TAG, "Rx: NAK from S21 for %s", tx_command);
   if (strcmp(tx_command, *current_query) == 0) {
     ESP_LOGW(TAG, "Removing %s from query pool (assuming unsupported)", tx_command);
+    nak_queries.emplace_back(*current_query);
     // current_query iterator will be invalidated, recover index and recreate
     const auto index = std::distance(queries.begin(), current_query);
     queries.erase(current_query);
@@ -688,19 +702,17 @@ void DaikinS21::setup() {
 #define S21_EXPERIMENTS 1
   queries = {
       // Protocol version detect:
-      "F8", "FY00",
+      "F8", "FY00", "M",
+      // Basic sensor support
+      "F9", "RH", "RI", "RL", "Ra",
       // Standard:
       "F1", "F2", "F5",
-      "RG", "RH", "RI", "RL", "RX",
-      "Ra", "Rb", "Rd",
-      // worse:
-      // "F9", // better granularity in RH, Ra and Re
+      "RG", "RX",
+      "Rb", "Rd",
       // redundant:
       // "RB", "RC", "RF",
       // not supported by my units:
       // "F6",
-      // static:
-      // "M",
       // unused:
       // "F3",  // on/off timer. use home assistant.
       // not handled yet:
@@ -762,6 +774,11 @@ void DaikinS21::dump_state() {
   ESP_LOGD(TAG, "** BEGIN STATE *****************************");
 
   ESP_LOGD(TAG, "  Proto: v%u.%u", this->protocol_version.major, this->protocol_version.minor);
+  if (this->debug_protocol) {
+    ESP_LOGD(TAG, "        G8: %s", str_repr(this->G8.data(), this->G8.size()).c_str());
+    ESP_LOGD(TAG, "      GY00: %u", this->GY00);
+    ESP_LOGD(TAG, "         M: %s", str_repr(this->M.data(), this->M.size()).c_str());
+  }
   ESP_LOGD(TAG, "   Mode: %s",
           LOG_STR_ARG(climate::climate_mode_to_string(this->active.mode)));
   ESP_LOGD(TAG, " Action: %s",
@@ -785,14 +802,18 @@ void DaikinS21::dump_state() {
   }
   ESP_LOGD(TAG, " Demand: %u", this->get_demand());
   if (this->debug_protocol) {
-    std::string query_str = "Queries: ";
-    for (const auto q : this->queries) {
-      query_str += q;
-      if (q != queries.back()) {
-        query_str += ",";
+    const auto comma_join = [](const auto& queries) {
+      std::string str;
+      for (const auto q : queries) {
+        str += q;
+        if (q != queries.back()) {
+          str += ",";
+        }
       }
-    }
-    ESP_LOGD(TAG, LOG_STR_ARG(query_str.c_str()));
+      return str;
+    };
+    ESP_LOGD(TAG, LOG_STR_ARG(("Queries: " + comma_join(this->queries)).c_str()));
+    ESP_LOGD(TAG, LOG_STR_ARG(("  Nak'd: " + comma_join(this->nak_queries)).c_str()));
   }
 
   ESP_LOGD(TAG, "** END STATE *****************************");
