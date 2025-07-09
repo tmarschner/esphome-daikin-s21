@@ -168,11 +168,24 @@ class DaikinS21 : public PollingComponent {
   uint8_t humidity{50};
   uint8_t demand{0};
 
+  // temporary stubs
+  bool quiet_active{false};
+  bool econo_active{false};
+  bool powerful_active{false};
+  bool comfort_active{false};
+  bool streamer_active{false};
+  bool sensor_active{false};
+  bool led_active{false};
+
   // protocol support
   bool determine_protocol_version();
-  std::array<uint8_t,4> G8{};
-  uint16_t GY00{0};
-  std::array<uint8_t,4> M{};
+  struct DetectResponses {
+    std::array<uint8_t,4> G8{};
+    std::array<uint8_t,4> GC{};
+    uint16_t GY00{0};
+    std::array<uint8_t,4> M{};
+    std::array<uint8_t,4> V{};
+  } detect_responses;
   struct ProtocolVersion {
     uint8_t major{std::numeric_limits<uint8_t>::max()};
     uint8_t minor{std::numeric_limits<uint8_t>::max()};
