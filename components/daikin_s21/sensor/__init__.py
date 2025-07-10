@@ -9,7 +9,6 @@ from esphome.const import (
     CONF_HUMIDITY,
     CONF_ID,
     UNIT_CELSIUS,
-    UNIT_DEGREES,
     UNIT_HERTZ,
     UNIT_PERCENT,
     UNIT_REVOLUTIONS_PER_MINUTE,
@@ -19,6 +18,7 @@ from esphome.const import (
     DEVICE_CLASS_FREQUENCY,
     DEVICE_CLASS_HUMIDITY,
     DEVICE_CLASS_TEMPERATURE,
+    DEVICE_CLASS_WIND_DIRECTION,
     STATE_CLASS_MEASUREMENT,
 )
 
@@ -75,9 +75,9 @@ CONFIG_SCHEMA = (
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
             cv.Optional(CONF_SWING_VERTICAL_ANGLE): sensor.sensor_schema(
-                unit_of_measurement=UNIT_DEGREES,
                 icon="mdi:pan-vertical",
                 accuracy_decimals=0,
+                device_class=DEVICE_CLASS_WIND_DIRECTION,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
             cv.Optional(CONF_COMPRESSOR_FREQUENCY): sensor.sensor_schema(
@@ -97,7 +97,7 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_DEMAND): sensor.sensor_schema(
                 unit_of_measurement=UNIT_PERCENT,
                 icon="mdi:thermometer-chevron-up",
-                accuracy_decimals=0,
+                accuracy_decimals=1,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
         }

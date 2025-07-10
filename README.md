@@ -29,7 +29,7 @@ Sensors:
 * Vertical swing angle (directional flap)
 * Compressor frequency (outside exchanger)
 * Humidity (not supported on all units, will report a consistent 50% if not present)
-* Unit demand from compressor with configurable scaling factor
+* Unit demand from outside exchanger
 
 On multihead systems the outdoor values will be the same (accounting for sampling jitter). It
 could be cleaner to only configure these sensors on your "primary" ESPhome device. ESPHome is
@@ -38,7 +38,7 @@ adding support for multiple devices, when this is released I will document how t
 ## Limitations
 
 * This code has only been tested on ESP32 pico and ESP32-S3.
-* Tested with 4MXl36TVJU outdoor unit and CTXS07LVJU, FTXS12LVJU, FTXS15LVJU indoor units.
+* Tested with 4MXL36TVJU outdoor unit and CTXS07LVJU, FTXS12LVJU, FTXS15LVJU indoor units.
 * Does not detect nor support powerful or econo modes.
 * Does not support comfort or presence detection features on some models.
 * Does not interact with the indoor units schedules (do that with HA instead).
@@ -138,7 +138,7 @@ sensor:
       name: Demand  # 0-15 demand units, use filter to map to %
       filters:
         - calibrate_linear:
-           method: exact  # default of least_squares results in -0% when 0
+           method: exact  # default of least_squares results in -0% when input 0
            datapoints:
              - 0 -> 0
              - 15 -> 100
