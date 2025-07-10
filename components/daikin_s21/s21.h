@@ -122,6 +122,22 @@ class DaikinS21 : public PollingComponent {
 
   bool climate_updated = false;
 
+  // temporary stubs, hide once supported
+  enum Modifier : uint8_t {
+    ModifierQuiet,    // outdoor unit limit
+    ModifierEcono,    // limits demand for power consumption
+    ModifierPowerful, // maximum output (20 minute timeout), mutaully exclusive with quiet and econo
+    ModifierComfort,  // fan angle depends on heating/cooling action
+    ModifierStreamer, // electron emitter decontamination?
+    ModifierSensor,   // "intelligent eye" PIR occupancy setpoint offset
+    ModifierLED,      // the sensor LED is on
+    ModifierCount,    // just for bitset sizing
+  };
+  std::bitset<ModifierCount> modifiers{};
+
+  uint8_t unit_state{0};
+  uint8_t system_state{0};
+
  protected:
   DaikinSerial serial;
 
@@ -167,15 +183,6 @@ class DaikinS21 : public PollingComponent {
   uint8_t compressor_hz{0};
   uint8_t humidity{50};
   uint8_t demand{0};
-
-  // temporary stubs
-  bool quiet_active{false};
-  bool econo_active{false};
-  bool powerful_active{false};
-  bool comfort_active{false};
-  bool streamer_active{false};
-  bool sensor_active{false};
-  bool led_active{false};
 
   // protocol support
   bool determine_protocol_version();

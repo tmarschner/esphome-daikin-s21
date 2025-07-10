@@ -401,7 +401,7 @@ void DaikinS21::refine_queries() {
     }
     // Some units don't support more granular sensor queries
     if (this->ready[ReadySensorReadout] == false) {
-      // TODO there's a chance that communication doesn't work at all so we didn't receive a NAK and these are still active. add an "acked" tracker to the queries.
+      // TODO there's a chance that communication doesn't work at all so we didn't receive a NAK and these are still active. add an "acked" tracker to the queries if this is a concern.
       if (DaikinS21::is_query_active("RH") && DaikinS21::is_query_active("Ra")) {
         prune_query("F9");  // support for discrete granular sensors, no need for inferior consolidated query
       }
@@ -474,6 +474,8 @@ void DaikinS21::tx_next() {
 
 static DaikinC10 temp_bytes_to_c10(uint8_t *bytes) { return bytes_to_num(bytes, 4); }
 static constexpr DaikinC10 temp_f9_byte_to_c10(uint8_t byte) { return (byte - 128) * 5; }
+static constexpr uint8_t ahex_digit(uint8_t digit) { return (digit >= 'A') ? (digit - 'A') + 10 : digit - '0'; }
+static constexpr uint8_t ahex_u8_le(uint8_t first, uint8_t second) { return (ahex_digit(second) << 4) | ahex_digit(first); }
 
 void DaikinS21::parse_ack() {
   char rcode[DaikinSerial::S21_MAX_COMMAND_SIZE + 1] = {};
@@ -534,15 +536,15 @@ void DaikinS21::parse_ack() {
           this->active.swing = daikin_to_climate_swing_mode(payload[0]);
           return;
         case '6':
-          this->powerful_active = (payload[0] & 0b00000010);
-          this->comfort_active =  (payload[0] & 0b01000000);
-          this->quiet_active =    (payload[0] & 0b10000000);
-          this->streamer_active = (payload[1] & 0b10000000);
-          this->sensor_active =   (payload[3] & 0b00001000);
-          this->led_active =      (payload[3] & 0b00001100) == 0b00001100;
+          this->modifiers[ModifierPowerful] = (payload[0] & 0b00000010);
+          this->modifiers[ModifierComfort] =  (payload[0] & 0b01000000);
+          this->modifiers[ModifierQuiet] =    (payload[0] & 0b10000000);
+          this->modifiers[ModifierStreamer] = (payload[1] & 0b10000000);
+          this->modifiers[ModifierSensor] =   (payload[3] & 0b00001000);
+          this->modifiers[ModifierLED] =      (payload[3] & 0b00001100) == 0b00001100;
           return;
         case '7':
-          this->econo_active =    (payload[1] == '2');
+          this->modifiers[ModifierEcono] =    (payload[1] == '2');
           return;
         case '8':  // F8 -> G8 -- Original protocol version
           std::copy_n(std::begin(payload), std::min(payload_len, this->detect_responses.G8.size()), std::begin(this->detect_responses.G8));
@@ -608,6 +610,14 @@ void DaikinS21::parse_ack() {
           return;
         case 'e':  // Humidity, %
           this->humidity = bytes_to_num(payload, payload_len);
+          return;
+        case 'z':
+          if ((rcode[2] == 'B') && (rcode[3] == '2')) { // FzB2 -> GzB2 Unit state
+            this->unit_state = ahex_u8_le(payload[0], payload[1]);  // todo only ahex_digit should be necessary
+          }
+          else if ((rcode[2] == 'C') && (rcode[3] == '3')) { // FzC3 -> GzC3 System state
+            this->system_state = ahex_u8_le(payload[0], payload[1]);
+          }
           return;
         default:
           if (payload_len > 3) {
@@ -729,6 +739,9 @@ void DaikinS21::setup() {
       "F1", "F2", "F5",
       "RG", "RX",
       "Rb", "Rd",
+      // State
+      "RzB2",
+      "RzC3",
       // Untested (no support for me):
       // "F6", "F7",
       // redundant:
@@ -737,8 +750,6 @@ void DaikinS21::setup() {
       // "F3",  // on/off timer. use home assistant.
       // not handled yet:
       // "F4",
-      // "RzB2",
-      // "RzC3",
       // "Rz52",
       // "Rz72",
       // "RW", // always "00"?
@@ -823,6 +834,7 @@ void DaikinS21::dump_state() {
     ESP_LOGD(TAG, "  Humid: %u%%", this->get_humidity());
   }
   ESP_LOGD(TAG, " Demand: %u", this->get_demand());
+  ESP_LOGD(TAG, " UnitState: %X SysState: %02X", this->unit_state, this->system_state);
   if (this->debug_protocol) {
     const auto comma_join = [](const auto& queries) {
       std::string str;
