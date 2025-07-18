@@ -160,11 +160,15 @@ class DaikinS21 : public PollingComponent {
   bool is_query_active(const char * query_str);
   bool prune_query(const char * query_str);
   std::vector<const char *> queries{};
-  std::vector<const char *>::iterator current_query;
+  std::vector<const char *>::iterator current_query{};
   const char *tx_command{""};  // used when matching responses - value must have persistent lifetime across serial state machine runs
+  
+  // debugging support
   bool debug_protocol{false};
-  std::unordered_map<std::string, std::vector<uint8_t>> val_cache{};  // debugging
-  std::vector<const char *> nak_queries{};   // debugging
+  std::unordered_map<std::string, std::vector<uint8_t>> val_cache{};
+  std::vector<const char *> nak_queries{};
+  uint32_t cycle_time_start_ms{0};
+  uint32_t cycle_time_ms{0};
 
   // settings
   DaikinSettings active{};
