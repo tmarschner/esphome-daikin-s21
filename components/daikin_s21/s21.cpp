@@ -467,8 +467,11 @@ void DaikinS21::tx_next() {
   }
   
   // Start fresh polling query scan (only after current scan is complete)
-  current_query = queries.begin();
-  tx_command = *current_query;
+  this->current_query = queries.begin();
+  this->tx_command = *current_query;
+  uint32_t now = millis();
+  this->cycle_time_ms = now - this->cycle_time_start_ms;
+  this->cycle_time_start_ms = now;
   this->serial.send_frame(tx_command);
 }
 
@@ -805,25 +808,21 @@ void DaikinS21::dump_state() {
 
   ESP_LOGD(TAG, "  Proto: v%u.%u", this->protocol_version.major, this->protocol_version.minor);
   if (this->debug_protocol) {
-    ESP_LOGD(TAG, "      G8: %s GC: %s GY00: %u M: %s V: %s",
+    ESP_LOGD(TAG, "      G8: %s  GC: %s  GY00: %u  M: %s  V: %s",
       str_repr(this->detect_responses.G8.data(), this->detect_responses.G8.size()).c_str(),
       str_repr(this->detect_responses.GC.data(), this->detect_responses.GC.size()).c_str(),
       this->detect_responses.GY00,
       str_repr(this->detect_responses.M.data(), this->detect_responses.M.size()).c_str(),
       str_repr(this->detect_responses.V.data(), this->detect_responses.V.size()).c_str());
   }
-  ESP_LOGD(TAG, "   Mode: %s",
-          LOG_STR_ARG(climate::climate_mode_to_string(this->active.mode)));
-  ESP_LOGD(TAG, " Action: %s",
+  ESP_LOGD(TAG, "   Mode: %s  Action: %s",
+          LOG_STR_ARG(climate::climate_mode_to_string(this->active.mode)),
           LOG_STR_ARG(climate::climate_action_to_string(this->get_climate_action())));
+  ESP_LOGD(TAG, "    Fan: %s (%d rpm)  Swing: %s",
+          daikin_fan_mode_to_string_ref(this->active.fan).c_str(), this->fan_rpm,
+          (this->support_swing ? LOG_STR_ARG(climate::climate_swing_mode_to_string(this->active.swing)) : "unsupported"));
   ESP_LOGD(TAG, " Target: %.1f C (%.1f F)",
           this->active.setpoint.f_degc(), this->active.setpoint.f_degf());
-  ESP_LOGD(TAG, "    Fan: %s (%d rpm)",
-          daikin_fan_mode_to_string_ref(this->active.fan).c_str(), this->fan_rpm);
-  if (this->support_swing) {
-    ESP_LOGD(TAG, "  Swing: %s",
-            LOG_STR_ARG(climate::climate_swing_mode_to_string(this->active.swing)));
-  }
   ESP_LOGD(TAG, " Inside: %.1f C (%.1f F)",
           this->temp_inside.f_degc(), this->temp_inside.f_degf());
   ESP_LOGD(TAG, "Outside: %.1f C (%.1f F)",
@@ -834,6 +833,7 @@ void DaikinS21::dump_state() {
     ESP_LOGD(TAG, "  Humid: %u%%", this->get_humidity());
   }
   ESP_LOGD(TAG, " Demand: %u", this->get_demand());
+  ESP_LOGD(TAG, " Cycle Time: %ums", this->cycle_time_ms);
   ESP_LOGD(TAG, " UnitState: %X SysState: %02X", this->unit_state, this->system_state);
   if (this->debug_protocol) {
     const auto comma_join = [](const auto& queries) {

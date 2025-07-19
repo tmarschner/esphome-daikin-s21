@@ -21,7 +21,7 @@ Climate:
 - Swing modes horizontal, vertical, and both.
 - Optional humidity reporting.
 
-Sensors:
+Sensor:
 * Inside temperature (usually measured at indoor air handler return)
 * Outside temperature (outside exchanger)
 * Coil temperature (indoor air handler's coil)
@@ -30,6 +30,9 @@ Sensors:
 * Compressor frequency (outside exchanger)
 * Humidity (not supported on all units, will report a consistent 50% if not present)
 * Unit demand from outside exchanger
+
+Binary Sensor:
+* New, extracted from the unit and system state bitfields. Still need to observe to see how valuable these are.
 
 On multihead systems the outdoor values will be the same (accounting for sampling jitter). It
 could be cleaner to only configure these sensors on your "primary" ESPhome device. ESPHome is
@@ -78,6 +81,9 @@ on having pins inverted differently.
 ## Configuration Example
 
 ```yaml
+esphome:
+  min_version: "2025.7"
+
 logger:
   baud_rate: 0  # Disable UART logger if using UART0 (pins 1,3)
 
@@ -136,16 +142,25 @@ sensor:
       name: Humidity
     demand:
       name: Demand  # 0-15 demand units, use filter to map to %
-      filters:
-        - calibrate_linear:
-           method: exact  # default of least_squares results in -0% when input 0
-           datapoints:
-             - 0 -> 0
-             - 15 -> 100
+      filters:  
+        - multiply: !lambda return 100.0F / 15.0F;
   - platform: homeassistant
     id: room_temp
     entity_id: sensor.office_temperature
     unit_of_measurement: °F
+
+binary_sensor:
+  - platform: daikin_s21
+    powerful:
+      name: Powerful
+    defrost:
+      name: Defrost
+    valve:
+      name: Valve
+    short_cycle:
+      name: Short Cycle
+    system_defrost:
+      name: System Defrost
 ```
 
 Here is an example of how daikin_s21 can be used with one inverted UART pin:
