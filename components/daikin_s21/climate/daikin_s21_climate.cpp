@@ -161,6 +161,10 @@ climate::ClimateTraits DaikinS21Climate::traits() {
     traits.add_supported_mode(climate::CLIMATE_MODE_OFF);   // Always available
     traits.add_supported_mode(climate::CLIMATE_MODE_HEAT_COOL);  // Always available
   }
+  if (this->supported_presets_override_.has_value()) {
+    traits.set_supported_presets(this->supported_presets_override_.value());
+    traits.add_supported_preset(climate::CLIMATE_PRESET_NONE);
+  }
   return traits;
 }
 
@@ -306,6 +310,9 @@ void DaikinS21Climate::control(const climate::ClimateCall &call) {
   }
   if (call.get_custom_fan_mode().has_value()) {
     this->custom_fan_mode = call.get_custom_fan_mode().value();
+  }
+  if (call.get_preset().has_value()) {
+    this->preset = call.get_preset().value();
   }
   this->set_s21_climate();
   this->publish_state();

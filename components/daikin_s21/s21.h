@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bitset>
+#include <compare>
 #include <limits>
 #include <span>
 #include <string>
@@ -46,7 +47,7 @@ private:
   Result handle_rx(uint8_t byte);
 
   enum class CommState : uint8_t {
-    Idle,
+    Idle = 0,
     CommandAck,
     QueryAck,
     QueryStx,
@@ -56,20 +57,22 @@ private:
     ErrorDelay,
   };
 
-  uart::UARTComponent *tx_uart{nullptr};
-  uart::UARTComponent *rx_uart{nullptr};
-  CommState comm_state{CommState::Idle};
-  uint32_t last_event_time_ms{0};
+  uart::UARTComponent *tx_uart{};
+  uart::UARTComponent *rx_uart{};
+  CommState comm_state{};
+  uint32_t last_event_time_ms{};
 };
 
 /**
  * Class representing a temperature in degrees C scaled by 10, the most granular internal temperature measurement format
  */
 struct DaikinC10 {
-  template <typename T, typename std::enable_if<std::is_floating_point<T>::value, bool>::type = true>
+  constexpr DaikinC10() = default;
+
+  template <typename T, typename std::enable_if_t<std::is_floating_point_v<T>, bool> = true>
   constexpr DaikinC10(const T valf) : value((static_cast<int16_t>(valf * 10 * 2) + 1) / 2) {} // round to nearest 0.1C
 
-  template <typename T, typename std::enable_if<std::is_integral<T>::value, bool>::type = true>
+  template <typename T, typename std::enable_if_t<std::is_integral_v<T>, bool> = true>
   constexpr DaikinC10(const T vali) : value(vali) {}
 
   explicit constexpr operator float() const { return value / 10.0F; }
@@ -77,10 +80,10 @@ struct DaikinC10 {
   constexpr float f_degc() const { return static_cast<float>(*this); }
   constexpr float f_degf() const { return static_cast<float>(*this) * 1.8F + 32.0F; }
 
-  constexpr bool operator==(const DaikinC10 &other) const { return this->value == other.value; }
+  constexpr bool operator==(const DaikinC10 &other) const = default;
   
 private:
-  int16_t value;
+  int16_t value{};
 };
 
 struct DaikinSettings {
@@ -89,12 +92,7 @@ struct DaikinSettings {
   DaikinFanMode fan{DaikinFanMode::Auto};
   climate::ClimateSwingMode swing{climate::CLIMATE_SWING_OFF};
 
-  constexpr bool operator==(const DaikinSettings &other) const {
-    return (this->mode == other.mode) &&
-           (this->setpoint == other.setpoint) &&
-           (this->fan == other.fan) &&
-           (this->swing == other.swing);
-  }
+  constexpr bool operator==(const DaikinSettings &other) const = default;
 };
 
 class DaikinS21 : public PollingComponent {
@@ -185,15 +183,15 @@ class DaikinS21 : public PollingComponent {
 
   // current values
   climate::ClimateAction climate_action = climate::CLIMATE_ACTION_OFF;
-  DaikinC10 temp_inside{0};
-  DaikinC10 temp_target{0};
-  DaikinC10 temp_outside{0};
-  DaikinC10 temp_coil{0};
-  uint16_t fan_rpm{0};
-  int16_t swing_vertical_angle{0};
-  uint8_t compressor_hz{0};
+  DaikinC10 temp_inside{};
+  DaikinC10 temp_target{};
+  DaikinC10 temp_outside{};
+  DaikinC10 temp_coil{};
+  uint16_t fan_rpm{};
+  int16_t swing_vertical_angle{};
+  uint8_t compressor_hz{};
   uint8_t humidity{50};
-  uint8_t demand{0};
+  uint8_t demand{};
 
   // protocol support
   bool determine_protocol_version();
@@ -208,10 +206,10 @@ class DaikinS21 : public PollingComponent {
     uint8_t major{std::numeric_limits<uint8_t>::max()};
     uint8_t minor{std::numeric_limits<uint8_t>::max()};
   } protocol_version{};
-  char G2_model_info{0};
-  bool support_swing{false};
-  bool support_horizontal_swing{false};
-  bool support_humidity{false};
+  char G2_model_info{};
+  bool support_swing{};
+  bool support_horizontal_swing{};
+  bool support_humidity{};
 };
 
 class DaikinS21Client {

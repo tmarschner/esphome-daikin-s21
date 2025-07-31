@@ -329,8 +329,8 @@ DaikinSerial::Result DaikinSerial::send_frame(std::string_view cmd, const std::s
     } else {
       ESP_LOGD(TAG, "Tx: %" PRI_SV " %s %s", 
                PRI_SV_ARGS(cmd),
-               str_repr({reinterpret_cast<const uint8_t *>(payload.data()), payload.size()}).c_str(),
-               hex_repr({reinterpret_cast<const uint8_t *>(payload.data()), payload.size()}).c_str());
+               str_repr(payload).c_str(),
+               hex_repr(payload).c_str());
     }
   }
 

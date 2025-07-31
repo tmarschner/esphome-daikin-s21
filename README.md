@@ -40,6 +40,12 @@ adding support for multiple devices, when this is released I will document how t
 
 ## Limitations
 
+**NOTE:** Currently there's a serious issue when using the Arduino framework.
+If flashed OTA you may lose communication and require a physical reflashing
+(annoying if your board in inside your air handler). Please stick to the ESP-IDF
+PlatformIO framework for now (Arduino is an extra shim over the ESP-IDF SDK anyways).
+See the framework selection in the configuration example.
+
 * This code has only been tested on ESP32 pico and ESP32-S3.
 * Tested with 4MXL36TVJU outdoor unit and CTXS07LVJU, FTXS12LVJU, FTXS15LVJU indoor units.
 * Does not detect nor support powerful or econo modes.
@@ -65,12 +71,24 @@ On my Daikin units, the S21 port has the following pins:
 The S21 plug is JST `EHR-5` and related header `B5B-EH-A(LF)(SN)`, though the
 plug pins are at standard 2.5mm pin header widths.
 
-### PCB
+### PCB Option 1
 
-I've been using the board designed by [revk][1] available [here][3]. Note that
+joshbenner uses the board designed by [revk][1] available [here][3]. Note that
 revk's design includes a FET that inverts the logic levels on the ESP's RX pin,
 which required using two separate UART devices to get around an ESPHome limit
 on having pins inverted differently.
+
+### PCB Option 2
+
+I am instead using ESP32-S3 mini dev boards and directly wiring communication to
+the S21 port. The Daikin unit pulls our TX line up to 5V, so the pin should be
+configured as open drain. Instead of driving the line to 0V, it shorts it to
+ground through their external pullup resistor. Your Daikin unit may not have this
+pullup and may need to be added externally to your circuit. Alternatively there
+are cheap level shifter modules available where conventionally driven outputs
+will work. The RX line relies on the ESP32's 5V tolerant GPIO pins. Communication
+works reliably for me. For power I am using a cheap 5V -> 3.3V switching module
+wired into Vcc on the dev board. Don't forget to wire up ground as well.
 
 [1]: https://github.com/revk
 [2]: https://github.com/revk/ESP32-Faikin
@@ -83,6 +101,10 @@ on having pins inverted differently.
 ```yaml
 esphome:
   min_version: "2025.7"
+
+esp32:
+  framework:
+   type: esp-idf
 
 logger:
   baud_rate: 0  # Disable UART logger if using UART0 (pins 1,3)
@@ -183,4 +205,22 @@ uart:
 daikin_s21:
   tx_uart: s21_tx
   rx_uart: s21_rx
+```
+
+Here's an example of a single UART using direct wiring:
+
+```yaml
+uart:
+  - id: s21_uart
+    tx_pin:
+      number: GPIO43
+      mode:
+        output: true
+        open_drain: true  # daikin pulls up to 5V internally
+    rx_pin: GPIO44
+    baud_rate: 2400
+  
+daikin_s21:
+  tx_uart: s21_uart
+  rx_uart: s21_uart
 ```
