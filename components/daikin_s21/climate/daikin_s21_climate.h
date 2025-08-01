@@ -23,6 +23,7 @@ class DaikinS21Climate : public climate::Climate,
   void set_room_sensor(sensor::Sensor *sensor) { this->room_sensor_ = sensor; }
   void set_setpoint_interval(uint16_t seconds) { this->setpoint_interval_s = seconds; };
   void set_supported_modes_override(std::set<climate::ClimateMode> modes) { this->supported_modes_override_ = std::move(modes); }
+  void set_supported_presets_override(std::set<climate::ClimatePreset> presets) { this->supported_presets_override_ = std::move(presets); }
   void set_supports_current_humidity(bool supports_current_humidity) { this->supports_current_humidity_ = supports_current_humidity; }
 
  protected:
@@ -30,6 +31,7 @@ class DaikinS21Climate : public climate::Climate,
 
   climate::ClimateTraits traits() override;
   optional<std::set<climate::ClimateMode>> supported_modes_override_{};
+  optional<std::set<climate::ClimatePreset>> supported_presets_override_{};
   bool supports_current_humidity_{false};
 
   sensor::Sensor *room_sensor_{};

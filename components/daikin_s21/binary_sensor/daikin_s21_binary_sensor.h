@@ -6,7 +6,8 @@
 namespace esphome {
 namespace daikin_s21 {
 
-class DaikinS21BinarySensor : public PollingComponent, public DaikinS21Client {
+class DaikinS21BinarySensor : public PollingComponent,
+                              public DaikinS21Client {
  public:
   void update() override;
   void dump_config() override;

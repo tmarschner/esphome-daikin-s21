@@ -5,9 +5,10 @@ Daikin S21 Mini-Split ESPHome component config validation & code generation.
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import climate, sensor
-from esphome.components.climate import ClimateMode
+from esphome.components.climate import ClimateMode, ClimatePreset
 from esphome.const import (
     CONF_SUPPORTED_MODES,
+    CONF_SUPPORTED_PRESETS,
 )
 from .. import (
     daikin_s21_ns,
@@ -33,15 +34,19 @@ SUPPORTED_CLIMATE_MODES_OPTIONS = {
     "DRY": ClimateMode.CLIMATE_MODE_DRY,
 }
 
+SUPPORTED_CLIMATE_PRESETS_OPTIONS = {
+    "ECO": ClimatePreset.CLIMATE_PRESET_ECO,
+    "BOOST": ClimatePreset.CLIMATE_PRESET_BOOST,
+}
+
 CONFIG_SCHEMA = cv.All(
     climate.climate_schema(DaikinS21Climate)
     .extend(
         {
             cv.Optional(CONF_ROOM_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
             cv.Optional(CONF_SETPOINT_INTERVAL, default="300s"): cv.positive_time_period_seconds,
-            cv.Optional(CONF_SUPPORTED_MODES): cv.ensure_list(
-                cv.enum(SUPPORTED_CLIMATE_MODES_OPTIONS, upper=True)
-            ),
+            cv.Optional(CONF_SUPPORTED_MODES): cv.ensure_list(cv.enum(SUPPORTED_CLIMATE_MODES_OPTIONS, upper=True)),
+            cv.Optional(CONF_SUPPORTED_PRESETS): cv.ensure_list(cv.enum(SUPPORTED_CLIMATE_PRESETS_OPTIONS, upper=True)),
             cv.Optional(CONF_SUPPORTS_HUMIDITY): cv.boolean,
         }
     )
@@ -63,6 +68,9 @@ async def to_code(config):
 
     if CONF_SUPPORTED_MODES in config:
         cg.add(var.set_supported_modes_override(config[CONF_SUPPORTED_MODES]))
+
+    if CONF_SUPPORTED_PRESETS in config:
+        cg.add(var.set_supported_presets_override(config[CONF_SUPPORTED_PRESETS]))
     
     if CONF_SUPPORTS_HUMIDITY in config:
         cg.add(var.set_supports_current_humidity(config[CONF_SUPPORTS_HUMIDITY]))

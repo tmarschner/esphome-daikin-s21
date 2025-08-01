@@ -6,7 +6,8 @@
 namespace esphome {
 namespace daikin_s21 {
 
-class DaikinS21Sensor : public PollingComponent, public DaikinS21Client {
+class DaikinS21Sensor : public PollingComponent,
+                        public DaikinS21Client {
  public:
   void update() override;
   void dump_config() override;
@@ -37,14 +38,14 @@ class DaikinS21Sensor : public PollingComponent, public DaikinS21Client {
   }
 
  protected:
-  sensor::Sensor *temp_inside_sensor_{nullptr};
-  sensor::Sensor *temp_outside_sensor_{nullptr};
-  sensor::Sensor *temp_coil_sensor_{nullptr};
-  sensor::Sensor *fan_speed_sensor_{nullptr};
-  sensor::Sensor *swing_vertical_angle_sensor_{nullptr};
-  sensor::Sensor *compressor_frequency_sensor_{nullptr};
-  sensor::Sensor *humidity_sensor_{nullptr};
-  sensor::Sensor *demand_sensor_{nullptr};
+  sensor::Sensor *temp_inside_sensor_{};
+  sensor::Sensor *temp_outside_sensor_{};
+  sensor::Sensor *temp_coil_sensor_{};
+  sensor::Sensor *fan_speed_sensor_{};
+  sensor::Sensor *swing_vertical_angle_sensor_{};
+  sensor::Sensor *compressor_frequency_sensor_{};
+  sensor::Sensor *humidity_sensor_{};
+  sensor::Sensor *demand_sensor_{};
 };
 
 }  // namespace daikin_s21
