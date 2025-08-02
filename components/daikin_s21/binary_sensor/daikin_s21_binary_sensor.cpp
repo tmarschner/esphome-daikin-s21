@@ -5,12 +5,12 @@ namespace daikin_s21 {
 
 static const char *const TAG = "daikin_s21.binary_sensor";
 
-void DaikinS21BinarySensor::update() {
-  if (!this->get_parent()->is_ready())
-    return;
+void DaikinS21BinarySensor::setup() {
+  this->get_parent()->add_binary_sensor_callback(std::bind(&DaikinS21BinarySensor::update_handler, this, std::placeholders::_1, std::placeholders::_2)); // enable update events from DaikinS21
+  this->disable_loop(); // wait for updates
+}
 
-  const auto unit_state = get_parent()->unit_state;
-  const auto system_state = get_parent()->system_state;
+void DaikinS21BinarySensor::update_handler(const uint8_t unit_state, const uint8_t system_state) {
   if (this->powerful_sensor_ != nullptr) {
     this->powerful_sensor_->publish_state(unit_state & 0x1);
   }

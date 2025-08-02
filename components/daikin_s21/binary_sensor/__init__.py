@@ -21,7 +21,7 @@ from .. import (
 )
 
 DaikinS21BinarySensor = daikin_s21_ns.class_(
-    "DaikinS21BinarySensor", cg.PollingComponent
+    "DaikinS21BinarySensor", cg.Component
 )
 
 CONF_POWERFUL = "powerful"
@@ -64,7 +64,6 @@ CONFIG_SCHEMA = (
         }
     )
     .extend(S21_PARENT_SCHEMA)
-    .extend(cv.polling_component_schema("10s"))
 )
 
 async def to_code(config):

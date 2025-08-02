@@ -16,96 +16,108 @@ static const char *const TAG = "daikin_s21.climate";
 
 void DaikinS21Climate::setup() {
   uint32_t h = this->get_object_id_hash();
-  auto_setpoint_pref = global_preferences->make_preference<int16_t>(h + 1);
-  cool_setpoint_pref = global_preferences->make_preference<int16_t>(h + 2);
-  heat_setpoint_pref = global_preferences->make_preference<int16_t>(h + 3);
+  this->auto_setpoint_pref = global_preferences->make_preference<int16_t>(h + 1);
+  this->cool_setpoint_pref = global_preferences->make_preference<int16_t>(h + 2);
+  this->heat_setpoint_pref = global_preferences->make_preference<int16_t>(h + 3);
   this->set_custom_fan_mode(commanded.fan); // ensure custom fan mode string is populated with a default
+  // enable event driven updates
+  this->get_parent()->add_climate_callback(std::bind(&DaikinS21Climate::update_handler, this)); // enable update events from DaikinS21
+  this->set_command_timeout(0);  // schedule an immediate update to capture the current state (change detection on update requires a "previous" state)
+  this->disable_loop(); // wait for updates
+}
+/**
+ * Command timeout handler
+ * 
+ * Called when a command times out without seeming to take effect.
+ * Trigger a publish of the current state.
+ */
+void DaikinS21Climate::command_timeout_handler() {
+  command_active = false;
+  update_handler();
 }
 
 /**
- * Component polling loop.
+ * Update handler
  * 
- * Check the DaikinS21 component to see if it's updated.
  * Update climate state if a previous command isn't in progress.
  * Publish any state changes to Home Assistant.
+ *
+ * Called by DaikinS21 on every complete system state update.
  */
-void DaikinS21Climate::loop() {
-  if (this->get_parent()->climate_updated) {
-    const auto& reported = this->get_parent()->get_climate_settings();
+void DaikinS21Climate::update_handler() {
+  const auto& reported = this->get_parent()->get_climate_settings();
 
-    // New state, determine if we can publish
-    const bool can_publish = (static_cast<int32_t>(millis() - this->command_timeout_end_ms) >= 0) ||  // command not in progress
-                             (this->commanded == reported);                         // command took effect, no longer in progress
-    if (can_publish) {
-      // Clear the updated flag only if there's no command in progress.
-      // A command timeout could occur before the next update and we'll want to publish the current state before then
-      this->get_parent()->climate_updated = false;
-      this->command_timeout_end_ms = millis(); // move forward to avoid underflow in subsequent expiry calculations
+  // If an active command took effect, cancel the timeout and lift the publication ban
+  if (command_active && (this->commanded == reported)) {
+    this->command_active = false;
+    this->cancel_timeout(command_timeout_name);
+  }
+  
+  // Don't publish current state if a command is in progress -- avoids UI glitches
+  if (command_active == false) {
+    // Allowed to publish, determine if we should
+    bool do_publish = false;
 
-      // Allowed to publish, determine if we should
-      bool do_publish = false;
+    // Detect and integrate new sensor values into component state
+    if ((this->action != this->get_parent()->get_climate_action()) ||
+        (this->current_temperature != this->get_effective_current_temperature()) ||
+        (this->current_humidity != this->get_parent()->get_humidity())) {
+      this->action = this->get_parent()->get_climate_action();
+      this->current_temperature = this->get_effective_current_temperature();
+      this->current_humidity = this->get_parent()->get_humidity();
+      do_publish = true;
+    }
 
-      // Detect and integrate new sensor values into component state
-      if ((this->action != this->get_parent()->get_climate_action()) ||
-          (this->current_temperature != this->get_effective_current_temperature()) ||
-          (this->current_humidity != this->get_parent()->get_humidity())) {
-        this->action = this->get_parent()->get_climate_action();
-        this->current_temperature = this->get_effective_current_temperature();
-        this->current_humidity = this->get_parent()->get_humidity();
-        do_publish = true;
+    // Detect and integrate new settings values into component state
+    if (this->should_check_setpoint()) {
+      this->last_setpoint_check_ms = millis();
+
+      if (this->use_room_sensor()) {
+        ESP_LOGD(TAG, "Room temp from external sensor: %.1f %s (%.1f °C)",
+                this->room_sensor_->get_state(),
+                this->room_sensor_->get_unit_of_measurement().c_str(),
+                this->room_sensor_degc());
+        ESP_LOGD(TAG, "  Offset: %.1f", this->get_room_temp_offset());
       }
 
-      // Detect and integrate new settings values into component state
-      if (this->should_check_setpoint()) {
-        this->last_setpoint_check_ms = millis();
-
-        if (this->use_room_sensor()) {
-          ESP_LOGD(TAG, "Room temp from external sensor: %.1f %s (%.1f °C)",
-                  this->room_sensor_->get_state(),
-                  this->room_sensor_->get_unit_of_measurement().c_str(),
-                  this->room_sensor_degc());
-          ESP_LOGD(TAG, "  Offset: %.1f", this->get_room_temp_offset());
-        }
-
-        // Target temperature is stored by climate class, and is used to represent
-        // the user's desired temperature. This is distinct from the HVAC unit's
-        // setpoint because we may be using an external sensor. So we only update
-        // the target temperature here if it appears uninitialized.
-        float unexpected_diff = abs(this->commanded.setpoint.f_degc() - reported.setpoint.f_degc());
-        if (this->target_temperature == 0.0F || isnanf(this->target_temperature)) {
-          // Use stored setpoint for mode, or fall back to use s21's setpoint.
-          this->target_temperature = this->load_setpoint().value_or(reported.setpoint.f_degc());
-          this->set_s21_climate();
-        } else if (unexpected_diff >= SETPOINT_STEP) {
-          // User probably set temp via IR remote -- so try to honor their wish by
-          // matching controller's target value to what they sent via remote.
-          ESP_LOGI(TAG, "S21 setpoint changed outside controller, updating target temp (expected %.1f, found %.1f)",
-              this->commanded.setpoint.f_degc(), reported.setpoint.f_degc());
-          this->target_temperature = reported.setpoint.f_degc();
-          this->set_s21_climate();
-        } else if (this->s21_setpoint_variance() >= SETPOINT_STEP) {
-          // Room temperature offset has probably changed, so we need to adjust
-          // the s21 setpoint based on the new difference.
-          this->set_s21_climate();
-          ESP_LOGI(TAG, "S21 setpoint updated to %.1f", this->commanded.setpoint.f_degc());
-        }
+      // Target temperature is stored by climate class, and is used to represent
+      // the user's desired temperature. This is distinct from the HVAC unit's
+      // setpoint because we may be using an external sensor. So we only update
+      // the target temperature here if it appears uninitialized.
+      float unexpected_diff = abs(this->commanded.setpoint.f_degc() - reported.setpoint.f_degc());
+      if (this->target_temperature == 0.0F || isnanf(this->target_temperature)) {
+        // Use stored setpoint for mode, or fall back to use s21's setpoint.
+        this->target_temperature = this->load_setpoint().value_or(reported.setpoint.f_degc());
+        this->set_s21_climate();
+      } else if (unexpected_diff >= SETPOINT_STEP) {
+        // User probably set temp via IR remote -- so try to honor their wish by
+        // matching controller's target value to what they sent via remote.
+        ESP_LOGI(TAG, "S21 setpoint changed outside controller, updating target temp (expected %.1f, found %.1f)",
+            this->commanded.setpoint.f_degc(), reported.setpoint.f_degc());
+        this->target_temperature = reported.setpoint.f_degc();
+        this->set_s21_climate();
+      } else if (this->s21_setpoint_variance() >= SETPOINT_STEP) {
+        // Room temperature offset has probably changed, so we need to adjust
+        // the s21 setpoint based on the new difference.
+        this->set_s21_climate();
+        ESP_LOGI(TAG, "S21 setpoint updated to %.1f", this->commanded.setpoint.f_degc());
       }
+    }
 
-      // If the resulting commanded settings of the above are not being reported we should publish them
-      if (this->commanded != reported) {
-        if (this->commanded.fan != reported.fan) {
-          this->set_custom_fan_mode(reported.fan);   // avoid custom string operations until there's a change that requires publishing
-        }
-        this->mode = reported.mode;
-        this->swing_mode = reported.swing;
-        this->commanded = reported;
-        do_publish = true;
+    // If the resulting commanded settings of the above are not being reported we should publish them
+    if (this->commanded != reported) {
+      if (this->commanded.fan != reported.fan) {
+        this->set_custom_fan_mode(reported.fan);   // avoid custom string operations until there's a change that requires publishing
       }
+      this->mode = reported.mode;
+      this->swing_mode = reported.swing;
+      this->commanded = reported;
+      do_publish = true;
+    }
 
-      // Only publish when state changed
-      if (do_publish) {
-        this->publish_state();
-      }
+    // Only publish when state changed
+    if (do_publish) {
+      this->publish_state();
     }
   }
 }
@@ -329,6 +341,7 @@ void DaikinS21Climate::set_s21_climate() {
   this->commanded.fan = string_to_daikin_fan_mode(this->custom_fan_mode.value());
   this->commanded.swing = this->swing_mode;
   this->get_parent()->set_climate_settings(this->commanded);
+  this->set_command_timeout();
 
   ESP_LOGI(TAG, "Controlling S21 climate:");
   ESP_LOGI(TAG, "  Mode: %s", LOG_STR_ARG(climate::climate_mode_to_string(this->commanded.mode)));
@@ -336,13 +349,23 @@ void DaikinS21Climate::set_s21_climate() {
   ESP_LOGI(TAG, "  Fan: %" PRI_SV, PRI_SV_ARGS(daikin_fan_mode_to_string_view(this->commanded.fan)));
   ESP_LOGI(TAG, "  Swing: %s", LOG_STR_ARG(climate::climate_swing_mode_to_string(this->commanded.swing)));
 
-  // HVAC unit takes a few seconds to begin reporting settings changes back to
-  // the controller, so when modifying don't publish current state until it
-  // takes effect or is given enough time to take effect or we get a jumpy UI
-  // in Home Assistant as stale state is published over the commanded state
-  // followed by the active state.
-  this->command_timeout_end_ms = millis() + state_publication_timeout_ms;
   this->save_setpoint(this->target_temperature);
+}
+
+/**
+ * Set the command timeout.
+ *
+ * HVAC unit takes a few seconds to begin reporting settings changes back to
+ * the controller, so when modifying don't publish current state until it
+ * takes effect or is given enough time to take effect or we get a jumpy UI
+ * in Home Assistant as stale state is published over the commanded state
+ * followed by the active state.
+ * 
+ * If the timeout expires the state will be published regardless.
+ */
+void DaikinS21Climate::set_command_timeout(const uint32_t delay_ms /*= state_publication_timeout_ms*/) {
+  command_active = true;
+  this->set_timeout(command_timeout_name, delay_ms, std::bind(&DaikinS21Climate::command_timeout_handler, this));
 }
 
 }  // namespace daikin_s21

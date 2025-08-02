@@ -8,11 +8,12 @@
 namespace esphome {
 namespace daikin_s21 {
 
-class DaikinS21BinarySensor : public PollingComponent,
+class DaikinS21BinarySensor : public Component,
                               public Parented<DaikinS21> {
  public:
-  void update() override;
+  void setup() override;
   void dump_config() override;
+  void update_handler(uint8_t unit_state, uint8_t system_state);
 
   void set_powerful_sensor(binary_sensor::BinarySensor *sensor) {
     this->powerful_sensor_ = sensor;
