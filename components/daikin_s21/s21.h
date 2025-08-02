@@ -78,7 +78,7 @@ struct DaikinC10 {
   explicit constexpr operator float() const { return value / 10.0F; }
   explicit constexpr operator int16_t() const { return value; }
   constexpr float f_degc() const { return static_cast<float>(*this); }
-  constexpr float f_degf() const { return static_cast<float>(*this) * 1.8F + 32.0F; }
+  constexpr float f_degf() const { return celsius_to_fahrenheit(static_cast<float>(*this)); }
 
   constexpr bool operator==(const DaikinC10 &other) const = default;
   
@@ -210,14 +210,6 @@ class DaikinS21 : public PollingComponent {
   bool support_swing{};
   bool support_horizontal_swing{};
   bool support_humidity{};
-};
-
-class DaikinS21Client {
- public:
-  void set_s21(DaikinS21 *s21) { this->s21 = s21; }
-
- protected:
-  DaikinS21 *s21;
 };
 
 }  // namespace daikin_s21

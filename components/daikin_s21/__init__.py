@@ -16,7 +16,6 @@ CONF_DEBUG_PROTOCOL = "debug_protocol"
 
 daikin_s21_ns = cg.esphome_ns.namespace("daikin_s21")
 DaikinS21 = daikin_s21_ns.class_("DaikinS21", cg.PollingComponent)
-DaikinS21Client = daikin_s21_ns.class_("DaikinS21Client")
 uart_ns = cg.esphome_ns.namespace("uart")
 UARTComponent = uart_ns.class_("UARTComponent")
 
@@ -30,7 +29,7 @@ CONFIG_SCHEMA = cv.Schema(
     }
 ).extend(cv.polling_component_schema("30s"))
 
-S21_CLIENT_SCHEMA = cv.Schema(
+S21_PARENT_SCHEMA = cv.Schema(
     {
         cv.GenerateID(CONF_S21_ID): cv.use_id(DaikinS21),
     }

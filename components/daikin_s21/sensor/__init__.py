@@ -9,6 +9,7 @@ from esphome.const import (
     CONF_HUMIDITY,
     CONF_ID,
     UNIT_CELSIUS,
+    UNIT_DEGREES,
     UNIT_HERTZ,
     UNIT_PERCENT,
     UNIT_REVOLUTIONS_PER_MINUTE,
@@ -23,15 +24,13 @@ from esphome.const import (
 from .. import (
     daikin_s21_ns,
     CONF_S21_ID,
-    S21_CLIENT_SCHEMA,
-    DaikinS21Client,
+    S21_PARENT_SCHEMA,
 )
 
 DaikinS21Sensor = daikin_s21_ns.class_(
-    "DaikinS21Sensor", cg.PollingComponent, DaikinS21Client
+    "DaikinS21Sensor", cg.PollingComponent
 )
 
-CONF_S21_ID = "s21_id"
 CONF_INSIDE_TEMP = "inside_temperature"
 CONF_OUTSIDE_TEMP = "outside_temperature"
 CONF_COIL_TEMP = "coil_temperature"
@@ -70,6 +69,7 @@ CONFIG_SCHEMA = (
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
             cv.Optional(CONF_SWING_VERTICAL_ANGLE): sensor.sensor_schema(
+                unit_of_measurement=UNIT_DEGREES,
                 icon="mdi:pan-vertical",
                 accuracy_decimals=0,
                 device_class=DEVICE_CLASS_WIND_DIRECTION,
@@ -96,18 +96,14 @@ CONFIG_SCHEMA = (
             ),
         }
     )
-    .extend(S21_CLIENT_SCHEMA)
+    .extend(S21_PARENT_SCHEMA)
     .extend(cv.polling_component_schema("10s"))
 )
 
-
 async def to_code(config):
-    """Generate main.cpp code"""
-
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
-    s21_var = await cg.get_variable(config[CONF_S21_ID])
-    cg.add(var.set_s21(s21_var))
+    await cg.register_parented(var, config[CONF_S21_ID])
 
     sensors = (
         (CONF_INSIDE_TEMP, var.set_temp_inside_sensor),

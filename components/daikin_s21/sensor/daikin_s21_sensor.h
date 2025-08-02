@@ -1,13 +1,15 @@
 #pragma once
 
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/core/component.h"
+#include "esphome/core/helpers.h"
 #include "../s21.h"
 
 namespace esphome {
 namespace daikin_s21 {
 
 class DaikinS21Sensor : public PollingComponent,
-                        public DaikinS21Client {
+                        public Parented<DaikinS21> {
  public:
   void update() override;
   void dump_config() override;

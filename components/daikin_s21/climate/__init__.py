@@ -13,16 +13,11 @@ from esphome.const import (
 from .. import (
     daikin_s21_ns,
     CONF_S21_ID,
-    S21_CLIENT_SCHEMA,
-    DaikinS21Client,
+    S21_PARENT_SCHEMA,
 )
 
-CONF_ROOM_TEMPERATURE_SENSOR = "room_temperature_sensor"
-CONF_SUPPORTS_HUMIDITY = "supports_humidity"
-CONF_SETPOINT_INTERVAL = "setpoint_interval"
-
 DaikinS21Climate = daikin_s21_ns.class_(
-    "DaikinS21Climate", climate.Climate, cg.Component, DaikinS21Client
+    "DaikinS21Climate", climate.Climate, cg.Component
 )
 
 SUPPORTED_CLIMATE_MODES_OPTIONS = {
@@ -39,6 +34,10 @@ SUPPORTED_CLIMATE_PRESETS_OPTIONS = {
     "BOOST": ClimatePreset.CLIMATE_PRESET_BOOST,
 }
 
+CONF_ROOM_TEMPERATURE_SENSOR = "room_temperature_sensor"
+CONF_SUPPORTS_HUMIDITY = "supports_humidity"
+CONF_SETPOINT_INTERVAL = "setpoint_interval"
+
 CONFIG_SCHEMA = cv.All(
     climate.climate_schema(DaikinS21Climate)
     .extend(
@@ -50,15 +49,13 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_SUPPORTS_HUMIDITY): cv.boolean,
         }
     )
-    .extend(S21_CLIENT_SCHEMA)
+    .extend(S21_PARENT_SCHEMA)
 )
 
 async def to_code(config):
-    """Generate code"""
     var = await climate.new_climate(config)
     await cg.register_component(var, config)
-    s21_var = await cg.get_variable(config[CONF_S21_ID])
-    cg.add(var.set_s21(s21_var))
+    await cg.register_parented(var, config[CONF_S21_ID])
 
     if CONF_ROOM_TEMPERATURE_SENSOR in config:
         sens = await cg.get_variable(config[CONF_ROOM_TEMPERATURE_SENSOR])
