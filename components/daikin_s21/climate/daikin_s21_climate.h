@@ -2,8 +2,8 @@
 
 #include "esphome/components/climate/climate.h"
 #include "esphome/components/sensor/sensor.h"
-#include "esphome/components/uart/uart.h"
 #include "esphome/core/component.h"
+#include "esphome/core/helpers.h"
 #include "esphome/core/preferences.h"
 #include "../daikin_s21_fan_modes.h"
 #include "../s21.h"
@@ -13,7 +13,7 @@ namespace daikin_s21 {
 
 class DaikinS21Climate : public climate::Climate,
                          public Component,
-                         public DaikinS21Client {
+                         public Parented<DaikinS21> {
  public:
   void setup() override;
   void loop() override;

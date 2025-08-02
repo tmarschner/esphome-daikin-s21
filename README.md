@@ -96,6 +96,22 @@ wired into Vcc on the dev board. Don't forget to wire up ground as well.
 [4]: https://github.com/joshbenner
 [5]: https://github.com/joshbenner/esphome-daikin-s21
 
+## Contributing
+
+If you can write C++, great. Even if you're more of a YAML writer and user, your
+assistance with this project would be helpful. Here are some possible ways:
+
+* Report your experince with different Daikin units. Turning on protocol debugging
+and getting the protocol detection output values would be the first step if you
+encounter issues and help me learn more about the output of different models.
+* Let me know how useful the binary sensor values are and which just shadow other
+sensor values.
+* If you have a revk module with an inverting RX pin, let me know if using a single
+UART configuration and inverting the RX line with ESPHome's pin schema works. If so,
+I can remove this custom code and simplify configuration and the internal code.
+
+See existing issues or open a new one with your findings. Thanks.
+
 ## Configuration Example
 
 ```yaml
@@ -174,12 +190,16 @@ binary_sensor:
       name: Powerful
     defrost:
       name: Defrost
+    online:
+      name: Online
     valve:
       name: Valve
     short_cycle:
       name: Short Cycle
     system_defrost:
       name: System Defrost
+    multizone_conflict:
+      name: Multizone Conflict
 ```
 
 Here is an example of how daikin_s21 can be used with one inverted UART pin:

@@ -127,17 +127,8 @@ void DaikinS21::dump_config() {
   ESP_LOGCONFIG(TAG, "  Update interval: %" PRIu32, this->get_update_interval());
 }
 
-// Adapated from ESPHome UART debugger
 std::string hex_repr(std::span<const uint8_t> bytes) {
-  std::string res;
-  char buf[5];
-  for (size_t i = 0; i < bytes.size(); i++) {
-    if (i > 0)
-      res += ':';
-    sprintf(buf, "%02X", bytes[i]);
-    res += buf;
-  }
-  return res;
+  return format_hex_pretty(bytes.data(), bytes.size(), ':', false);
 }
 
 // Adapated from ESPHome UART debugger
@@ -168,7 +159,7 @@ std::string str_repr(std::span<const uint8_t> bytes) {
     } else if (bytes[i] == 92) {
       res += "\\\\";
     } else if (bytes[i] < 32 || bytes[i] > 127) {
-      sprintf(buf, "\\x%02X", bytes[i]);
+      sprintf(buf, "\\x%02" PRIX8, bytes[i]);
       res += buf;
     } else {
       res += bytes[i];
@@ -197,7 +188,7 @@ DaikinSerial::Result DaikinSerial::handle_rx(const uint8_t byte) {
           result = Result::Nak;
           break;
         default:
-          ESP_LOGW(TAG, "Rx ACK: Unexpected 0x%02X", byte);
+          ESP_LOGW(TAG, "Rx ACK: Unexpected 0x%02" PRIX8, byte);
           this->comm_state = CommState::ErrorDelay;
           result = Result::Error;
           break;
@@ -210,7 +201,7 @@ DaikinSerial::Result DaikinSerial::handle_rx(const uint8_t byte) {
       } else if (byte == ACK) {
         ESP_LOGD(TAG, "Rx STX: Unexpected extra ACK, ignoring"); // on rare occasions my unit will do this
       } else {
-        ESP_LOGW(TAG, "Rx STX: Unexpected 0x%02X", byte);
+        ESP_LOGW(TAG, "Rx STX: Unexpected 0x%02" PRIX8, byte);
         this->comm_state = CommState::ErrorDelay;
         result = Result::Error;
       }
@@ -221,7 +212,7 @@ DaikinSerial::Result DaikinSerial::handle_rx(const uint8_t byte) {
         // not the end, add to buffer
         response.push_back(byte);
         if (response.size() > (S21_MAX_COMMAND_SIZE + S21_PAYLOAD_SIZE + 1)) {  // +1 for checksum byte
-          ESP_LOGW(TAG, "Rx ETX: Overflow %s %s + 0x%02X",
+          ESP_LOGW(TAG, "Rx ETX: Overflow %s %s + 0x%02" PRIX8,
             str_repr(response).c_str(), hex_repr(response).c_str(), byte);
           this->comm_state = CommState::ErrorDelay;
           result = Result::Error;
@@ -236,7 +227,7 @@ DaikinSerial::Result DaikinSerial::handle_rx(const uint8_t byte) {
           this->comm_state = CommState::AckResponseDelay;
           result = Result::Ack;
         } else {
-          ESP_LOGW(TAG, "Rx ETX: Checksum mismatch: 0x%02X != 0x%02X (calc from %s)",
+          ESP_LOGW(TAG, "Rx ETX: Checksum mismatch: 0x%02" PRIX8 " != 0x%02" PRIX8 " (calc from %s)",
             checksum, calc_checksum, hex_repr(response).c_str());
           this->comm_state = CommState::ErrorDelay;
           result = Result::Error;
@@ -392,7 +383,7 @@ void DaikinS21::refine_queries() {
         prune_query("FY00");
         prune_query("M");
         prune_query("V");
-        ESP_LOGI(TAG, "Protocol version %u.%u detected", this->protocol_version.major, this->protocol_version.minor);
+        ESP_LOGI(TAG, "Protocol version %" PRIu8 ".%" PRIu8 " detected", this->protocol_version.major, this->protocol_version.minor);
         this->ready.set(ReadyProtocolVersion);
       }
     }
@@ -803,9 +794,9 @@ void DaikinS21::update() {
 void DaikinS21::dump_state() {
   ESP_LOGD(TAG, "** BEGIN STATE *****************************");
 
-  ESP_LOGD(TAG, "  Proto: v%u.%u", this->protocol_version.major, this->protocol_version.minor);
+  ESP_LOGD(TAG, "  Proto: v%" PRIu8 ".%" PRIu8, this->protocol_version.major, this->protocol_version.minor);
   if (this->debug_protocol) {
-    ESP_LOGD(TAG, "      G8: %s  GC: %s  GY00: %u  M: %s  V: %s",
+    ESP_LOGD(TAG, "      G8: %s  GC: %s  GY00: %" PRIu16 "  M: %s  V: %s",
       str_repr(this->detect_responses.G8).c_str(),
       str_repr(this->detect_responses.GC).c_str(),
       this->detect_responses.GY00,
@@ -815,7 +806,7 @@ void DaikinS21::dump_state() {
   ESP_LOGD(TAG, "   Mode: %s  Action: %s",
           LOG_STR_ARG(climate::climate_mode_to_string(this->active.mode)),
           LOG_STR_ARG(climate::climate_action_to_string(this->get_climate_action())));
-  ESP_LOGD(TAG, "    Fan: %" PRI_SV " (%d rpm)  Swing: %s",
+  ESP_LOGD(TAG, "    Fan: %" PRI_SV " (%" PRIu16 " RPM)  Swing: %s",
           PRI_SV_ARGS(daikin_fan_mode_to_string_view(this->active.fan)), this->fan_rpm,
           (this->support_swing ? LOG_STR_ARG(climate::climate_swing_mode_to_string(this->active.swing)) : "unsupported"));
   ESP_LOGD(TAG, " Target: %.1f C (%.1f F)",
@@ -827,11 +818,11 @@ void DaikinS21::dump_state() {
   ESP_LOGD(TAG, "   Coil: %.1f C (%.1f F)",
           this->temp_coil.f_degc(), this->temp_coil.f_degf());
   if (this->support_humidity) {
-    ESP_LOGD(TAG, "  Humid: %u%%", this->get_humidity());
+    ESP_LOGD(TAG, "  Humid: %" PRIu8 "%%", this->get_humidity());
   }
-  ESP_LOGD(TAG, " Demand: %u", this->get_demand());
-  ESP_LOGD(TAG, " Cycle Time: %ums", this->cycle_time_ms);
-  ESP_LOGD(TAG, " UnitState: %X SysState: %02X", this->unit_state, this->system_state);
+  ESP_LOGD(TAG, " Demand: %" PRIu8, this->get_demand());
+  ESP_LOGD(TAG, " Cycle Time: %" PRIu32 "ms", this->cycle_time_ms);
+  ESP_LOGD(TAG, " UnitState: %" PRIX8 " SysState: %02" PRIX8, this->unit_state, this->system_state);
   if (this->debug_protocol) {
     const auto comma_join = [](const auto& queries) {
       std::string str;

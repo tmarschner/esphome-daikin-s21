@@ -2,7 +2,6 @@
 #include "esphome/core/defines.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
-#include "esphome/core/helpers.h"
 #include "daikin_s21_climate.h"
 #include "../daikin_s21_fan_modes.h"
 
@@ -31,8 +30,8 @@ void DaikinS21Climate::setup() {
  * Publish any state changes to Home Assistant.
  */
 void DaikinS21Climate::loop() {
-  if (this->s21->climate_updated) {
-    const auto& reported = this->s21->get_climate_settings();
+  if (this->get_parent()->climate_updated) {
+    const auto& reported = this->get_parent()->get_climate_settings();
 
     // New state, determine if we can publish
     const bool can_publish = (static_cast<int32_t>(millis() - this->command_timeout_end_ms) >= 0) ||  // command not in progress
@@ -40,19 +39,19 @@ void DaikinS21Climate::loop() {
     if (can_publish) {
       // Clear the updated flag only if there's no command in progress.
       // A command timeout could occur before the next update and we'll want to publish the current state before then
-      this->s21->climate_updated = false;
+      this->get_parent()->climate_updated = false;
       this->command_timeout_end_ms = millis(); // move forward to avoid underflow in subsequent expiry calculations
 
       // Allowed to publish, determine if we should
       bool do_publish = false;
 
       // Detect and integrate new sensor values into component state
-      if ((this->action != this->s21->get_climate_action()) ||
+      if ((this->action != this->get_parent()->get_climate_action()) ||
           (this->current_temperature != this->get_effective_current_temperature()) ||
-          (this->current_humidity != this->s21->get_humidity())) {
-        this->action = this->s21->get_climate_action();
+          (this->current_humidity != this->get_parent()->get_humidity())) {
+        this->action = this->get_parent()->get_climate_action();
         this->current_temperature = this->get_effective_current_temperature();
-        this->current_humidity = this->s21->get_humidity();
+        this->current_humidity = this->get_parent()->get_humidity();
         do_publish = true;
       }
 
@@ -120,7 +119,7 @@ void DaikinS21Climate::dump_config() {
     } else {
       ESP_LOGCONFIG(TAG, "  Room sensor: %s",
                     this->room_sensor_->get_name().c_str());
-      ESP_LOGCONFIG(TAG, "  Setpoint interval: %ds", this->setpoint_interval_s);
+      ESP_LOGCONFIG(TAG, "  Setpoint interval: %" PRIu16 "s", this->setpoint_interval_s);
     }
   }
   this->dump_traits_(TAG);
@@ -198,7 +197,7 @@ float DaikinS21Climate::get_effective_current_temperature() {
   if (this->use_room_sensor()) {
     return this->room_sensor_degc();
   }
-  return this->s21->get_temp_inside();
+  return this->get_parent()->get_temp_inside();
 }
 
 float DaikinS21Climate::get_room_temp_offset() {
@@ -206,7 +205,7 @@ float DaikinS21Climate::get_room_temp_offset() {
     return 0.0F;
   }
   float room_val = this->room_sensor_degc();
-  float s21_val = this->s21->get_temp_inside();
+  float s21_val = this->get_parent()->get_temp_inside();
   return s21_val - room_val;
 }
 
@@ -222,7 +221,7 @@ float DaikinS21Climate::calc_s21_setpoint() {
 
 // How far from desired setpoint is the current S21 setpoint?
 float DaikinS21Climate::s21_setpoint_variance() {
-  return abs(this->s21->get_setpoint() - this->calc_s21_setpoint());
+  return abs(this->get_parent()->get_setpoint() - this->calc_s21_setpoint());
 }
 
 void DaikinS21Climate::save_setpoint(float value, ESPPreferenceObject &pref) {
@@ -329,7 +328,7 @@ void DaikinS21Climate::set_s21_climate() {
   this->commanded.setpoint = this->calc_s21_setpoint();
   this->commanded.fan = string_to_daikin_fan_mode(this->custom_fan_mode.value());
   this->commanded.swing = this->swing_mode;
-  this->s21->set_climate_settings(this->commanded);
+  this->get_parent()->set_climate_settings(this->commanded);
 
   ESP_LOGI(TAG, "Controlling S21 climate:");
   ESP_LOGI(TAG, "  Mode: %s", LOG_STR_ARG(climate::climate_mode_to_string(this->commanded.mode)));

@@ -1,13 +1,15 @@
 #pragma once
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/core/component.h"
+#include "esphome/core/helpers.h"
 #include "../s21.h"
 
 namespace esphome {
 namespace daikin_s21 {
 
 class DaikinS21BinarySensor : public PollingComponent,
-                              public DaikinS21Client {
+                              public Parented<DaikinS21> {
  public:
   void update() override;
   void dump_config() override;
@@ -21,6 +23,9 @@ class DaikinS21BinarySensor : public PollingComponent,
   void set_active_sensor(binary_sensor::BinarySensor *sensor) {
     this->active_sensor_ = sensor;
   }
+  void set_online_sensor(binary_sensor::BinarySensor *sensor) {
+    this->online_sensor_ = sensor;
+  }
   void set_valve_sensor(binary_sensor::BinarySensor *sensor) {
     this->valve_sensor_ = sensor;
   }
@@ -30,14 +35,19 @@ class DaikinS21BinarySensor : public PollingComponent,
   void set_system_defrost_sensor(binary_sensor::BinarySensor *sensor) {
     this->system_defrost_sensor_ = sensor;
   }
+    void set_multizone_conflict_sensor(binary_sensor::BinarySensor *sensor) {
+    this->multizone_conflict_sensor_ = sensor;
+  }
 
  protected:
-  binary_sensor::BinarySensor *powerful_sensor_{nullptr};
-  binary_sensor::BinarySensor *defrost_sensor_{nullptr};
-  binary_sensor::BinarySensor *active_sensor_{nullptr};
-  binary_sensor::BinarySensor *valve_sensor_{nullptr};
-  binary_sensor::BinarySensor *short_cycle_sensor_{nullptr};
-  binary_sensor::BinarySensor *system_defrost_sensor_{nullptr};
+  binary_sensor::BinarySensor *powerful_sensor_{};
+  binary_sensor::BinarySensor *defrost_sensor_{};
+  binary_sensor::BinarySensor *active_sensor_{};
+  binary_sensor::BinarySensor *online_sensor_{};
+  binary_sensor::BinarySensor *valve_sensor_{};
+  binary_sensor::BinarySensor *short_cycle_sensor_{};
+  binary_sensor::BinarySensor *system_defrost_sensor_{};
+  binary_sensor::BinarySensor *multizone_conflict_sensor_{};
 };
 
 }  // namespace daikin_s21
