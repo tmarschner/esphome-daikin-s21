@@ -48,7 +48,7 @@ See the framework selection in the configuration example.
 
 * This code has only been tested on ESP32 pico and ESP32-S3.
 * Tested with 4MXL36TVJU outdoor unit and CTXS07LVJU, FTXS12LVJU, FTXS15LVJU indoor units.
-* Does not detect nor support powerful or econo modes.
+* Does not support powerful or econo modes.
 * Does not support comfort or presence detection features on some models.
 * Does not interact with the indoor units schedules (do that with HA instead).
 * Currently targets Version 0 protocol support due to the equipment available to the author.

@@ -125,7 +125,8 @@ class DaikinS21 : public PollingComponent {
   auto get_humidity() { return this->humidity; }
   auto get_demand() { return this->demand; }
 
-  bool climate_updated = false;
+  void add_climate_callback(std::function<void(void)> &&callback);
+  void add_binary_sensor_callback(std::function<void(uint8_t, uint8_t)> &&callback);
 
   // temporary stubs, hide once supported
   enum Modifier : uint8_t {
@@ -151,6 +152,9 @@ class DaikinS21 : public PollingComponent {
   void tx_next();
   void parse_ack();
   void handle_nak();
+
+  CallbackManager<void(void)> climate_callback_{};
+  CallbackManager<void(uint8_t, uint8_t)> binary_sensor_callback_{};
 
   enum ReadyCommand : uint8_t {
     ReadyProtocolVersion,

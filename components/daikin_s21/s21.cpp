@@ -135,34 +135,34 @@ std::string hex_repr(std::span<const uint8_t> bytes) {
 std::string str_repr(std::span<const uint8_t> bytes) {
   std::string res;
   char buf[5];
-  for (size_t i = 0; i < bytes.size(); i++) {
-    if (bytes[i] == 7) {
+  for (const auto b : bytes) {
+    if (b == 7) {
       res += "\\a";
-    } else if (bytes[i] == 8) {
+    } else if (b == 8) {
       res += "\\b";
-    } else if (bytes[i] == 9) {
+    } else if (b == 9) {
       res += "\\t";
-    } else if (bytes[i] == 10) {
+    } else if (b == 10) {
       res += "\\n";
-    } else if (bytes[i] == 11) {
+    } else if (b == 11) {
       res += "\\v";
-    } else if (bytes[i] == 12) {
+    } else if (b == 12) {
       res += "\\f";
-    } else if (bytes[i] == 13) {
+    } else if (b == 13) {
       res += "\\r";
-    } else if (bytes[i] == 27) {
+    } else if (b == 27) {
       res += "\\e";
-    } else if (bytes[i] == 34) {
+    } else if (b == 34) {
       res += "\\\"";
-    } else if (bytes[i] == 39) {
+    } else if (b == 39) {
       res += "\\'";
-    } else if (bytes[i] == 92) {
+    } else if (b == 92) {
       res += "\\\\";
-    } else if (bytes[i] < 32 || bytes[i] > 127) {
-      sprintf(buf, "\\x%02" PRIX8, bytes[i]);
+    } else if (b < 32 || b > 127) {
+      sprintf(buf, "\\x%02" PRIX8, b);
       res += buf;
     } else {
-      res += bytes[i];
+      res += b;
     }
   }
   return res;
@@ -450,8 +450,10 @@ void DaikinS21::tx_next() {
   
   // Polling query scan complete
   refine_queries();
-  if (this->ready.all()) {  // signal there's fresh data
-    climate_updated = true;
+  if (this->ready.all()) {
+    // signal there's fresh data
+    this->binary_sensor_callback_.call(this->unit_state, this->system_state);
+    this->climate_callback_.call();
   }
   
   // Start fresh polling query scan (only after current scan is complete)
@@ -890,6 +892,14 @@ climate::ClimateAction DaikinS21::get_climate_action() {
       break;
   }
   return this->climate_action;
+}
+
+void DaikinS21::add_climate_callback(std::function<void(void)> &&callback) {
+  this->climate_callback_.add(std::move(callback));
+}
+
+void DaikinS21::add_binary_sensor_callback(std::function<void(uint8_t, uint8_t)> &&callback) {
+  this->binary_sensor_callback_.add(std::move(callback));
 }
 
 }  // namespace daikin_s21
