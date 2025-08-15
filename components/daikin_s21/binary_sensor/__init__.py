@@ -70,7 +70,7 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await cg.register_parented(var, config[CONF_S21_ID])
-    
+
     binary_sensors = (
         (CONF_POWERFUL, var.set_powerful_sensor),
         (CONF_DEFROST, var.set_defrost_sensor),

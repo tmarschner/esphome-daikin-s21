@@ -5,8 +5,7 @@
 
 using namespace esphome;
 
-namespace esphome {
-namespace daikin_s21 {
+namespace esphome::daikin_s21 {
 
 #define STX 2
 #define ETX 3
@@ -31,7 +30,7 @@ uint8_t climate_mode_to_daikin(const climate::ClimateMode mode) {
     case climate::CLIMATE_MODE_FAN_ONLY:
       return '6';
     case climate::CLIMATE_MODE_DRY:
-      return '2';    
+      return '2';
   }
 }
 
@@ -49,7 +48,7 @@ climate::ClimateMode daikin_to_climate_mode(const uint8_t mode) {
     case '4': // heat
       return climate::CLIMATE_MODE_HEAT;
     case '6': // fan_only
-      return climate::CLIMATE_MODE_FAN_ONLY;      
+      return climate::CLIMATE_MODE_FAN_ONLY;
   }
 }
 
@@ -67,7 +66,7 @@ climate::ClimateAction daikin_to_climate_action(const uint8_t action) {
     case '7': // heat_cool heating
       return climate::CLIMATE_ACTION_HEATING;
     case '6': // fan_only
-      return climate::CLIMATE_ACTION_FAN;      
+      return climate::CLIMATE_ACTION_FAN;
   }
 }
 
@@ -171,12 +170,12 @@ std::string str_repr(std::span<const uint8_t> bytes) {
 DaikinSerial::Result DaikinSerial::handle_rx(const uint8_t byte) {
   Result result = Result::Busy; // default to busy, override when rx phase is over
 
-  switch (comm_state) {
+  switch (this->comm_state) {
     case CommState::QueryAck:
     case CommState::CommandAck:
       switch (byte) {
         case ACK:
-          if (comm_state == CommState::QueryAck) {
+          if (this->comm_state == CommState::QueryAck) {
             this->comm_state = CommState::QueryStx;
           } else {
             this->comm_state = CommState::NextTxDelay;
@@ -210,31 +209,31 @@ DaikinSerial::Result DaikinSerial::handle_rx(const uint8_t byte) {
     case CommState::QueryEtx:
       if (byte != ETX) {
         // not the end, add to buffer
-        response.push_back(byte);
-        if (response.size() > (S21_MAX_COMMAND_SIZE + S21_PAYLOAD_SIZE + 1)) {  // +1 for checksum byte
+        this->response.push_back(byte);
+        if (this->response.size() > (S21_MAX_COMMAND_SIZE + S21_PAYLOAD_SIZE + 1)) {  // +1 for checksum byte
           ESP_LOGW(TAG, "Rx ETX: Overflow %s %s + 0x%02" PRIX8,
-            str_repr(response).c_str(), hex_repr(response).c_str(), byte);
+            str_repr(this->response).c_str(), hex_repr(this->response).c_str(), byte);
           this->comm_state = CommState::ErrorDelay;
           result = Result::Error;
         }
       } else {
         // frame received, validate checksum
-        const uint8_t checksum = response.back();
-        response.pop_back();
-        const uint8_t calc_checksum = std::reduce(response.begin(), response.end(), 0U);
+        const uint8_t checksum = this->response.back();
+        this->response.pop_back();
+        const uint8_t calc_checksum = std::reduce(this->response.begin(), this->response.end(), 0U);
         if ((calc_checksum == checksum)
             || ((calc_checksum == STX) && (checksum == ENQ))) {  // protocol avoids STX in message body
           this->comm_state = CommState::AckResponseDelay;
           result = Result::Ack;
         } else {
           ESP_LOGW(TAG, "Rx ETX: Checksum mismatch: 0x%02" PRIX8 " != 0x%02" PRIX8 " (calc from %s)",
-            checksum, calc_checksum, hex_repr(response).c_str());
+            checksum, calc_checksum, hex_repr(this->response).c_str());
           this->comm_state = CommState::ErrorDelay;
           result = Result::Error;
         }
       }
       break;
-      
+
     default:
       break;
   }
@@ -246,13 +245,14 @@ DaikinSerial::Result DaikinSerial::service() {
   Result result = Result::Busy;
 
   // nothing to do if idle
-  if (comm_state == CommState::Idle) {
+  if (this->comm_state == CommState::Idle) {
     return Result::Idle;
   }
 
   // all other states have a timeout
+  const auto now = millis();
   uint32_t delay_period_ms;
-  switch(comm_state) {
+  switch (this->comm_state) {
     case CommState::AckResponseDelay:
       delay_period_ms = 45; // official remote delay time before ACKing a response
       break;
@@ -266,13 +266,13 @@ DaikinSerial::Result DaikinSerial::service() {
       delay_period_ms = 250;  // character timeout when expecting a response from the unit
       break;
   }
-  bool timeout = (millis() - last_event_time_ms) > delay_period_ms;
+  bool timeout = (now - last_event_time_ms) > delay_period_ms;
 
-  switch(comm_state) {
+  switch (this->comm_state) {
     case CommState::AckResponseDelay:
       if (timeout) {
-        tx_uart->write_byte(ACK);
-        last_event_time_ms = millis();
+        this->tx_uart->write_byte(ACK);
+        this->last_event_time_ms = now;
         this->comm_state = CommState::NextTxDelay;
       }
       break;
@@ -280,7 +280,7 @@ DaikinSerial::Result DaikinSerial::service() {
     case CommState::NextTxDelay:
     case CommState::ErrorDelay:
       if (timeout) {
-        comm_state = CommState::Idle;
+        this->comm_state = CommState::Idle;
         result = Result::Idle;
       }
       break;
@@ -288,15 +288,15 @@ DaikinSerial::Result DaikinSerial::service() {
     default:
       // all other states are actively receiving data from the unit
       if (timeout) {
-        comm_state = CommState::Idle;
+        this->comm_state = CommState::Idle;
         result = Result::Timeout;
         break;
       }
-      while ((result == Result::Busy) && rx_uart->available()) {  // read all available bytes
+      while ((result == Result::Busy) && this->rx_uart->available()) {  // read all available bytes
+        last_event_time_ms = now;
         uint8_t byte;
-        rx_uart->read_byte(&byte);
-        last_event_time_ms = millis();
-        result = handle_rx(byte);
+        this->rx_uart->read_byte(&byte);
+        result = this->handle_rx(byte);
       }
       break;
   }
@@ -305,7 +305,7 @@ DaikinSerial::Result DaikinSerial::service() {
 }
 
 DaikinSerial::Result DaikinSerial::send_frame(std::string_view cmd, const std::span<const uint8_t> payload /*= {}*/) {
-  if (comm_state != CommState::Idle) {
+  if (this->comm_state != CommState::Idle) {
     return Result::Busy;
   }
 
@@ -318,7 +318,7 @@ DaikinSerial::Result DaikinSerial::send_frame(std::string_view cmd, const std::s
     if (payload.empty()) {
       ESP_LOGD(TAG, "Tx: %" PRI_SV, PRI_SV_ARGS(cmd));
     } else {
-      ESP_LOGD(TAG, "Tx: %" PRI_SV " %s %s", 
+      ESP_LOGD(TAG, "Tx: %" PRI_SV " %s %s",
                PRI_SV_ARGS(cmd),
                str_repr(payload).c_str(),
                hex_repr(payload).c_str());
@@ -326,45 +326,51 @@ DaikinSerial::Result DaikinSerial::send_frame(std::string_view cmd, const std::s
   }
 
   // prepare for response
-  response.clear();
-  flush_input();
+  this->response.clear();
+  this->flush_input();
 
   // transmit
-  tx_uart->write_byte(STX);
-  tx_uart->write_array(reinterpret_cast<const uint8_t *>(cmd.data()), cmd.size());
+  this->tx_uart->write_byte(STX);
+  this->tx_uart->write_array(reinterpret_cast<const uint8_t *>(cmd.data()), cmd.size());
   uint8_t checksum = std::reduce(cmd.begin(), cmd.end(), 0U);
   if (payload.empty() == false) {
-    tx_uart->write_array(payload.data(), payload.size());
+    this->tx_uart->write_array(payload.data(), payload.size());
     checksum = std::reduce(payload.begin(), payload.end(), checksum);
   }
   if (checksum == STX) {
     checksum = ENQ;  // mid-message STX characters are escaped
   }
-  tx_uart->write_byte(checksum);
-  tx_uart->write_byte(ETX);
+  this->tx_uart->write_byte(checksum);
+  this->tx_uart->write_byte(ETX);
 
   // wait for result
-  last_event_time_ms = millis();
+  this->last_event_time_ms = millis();
   this->comm_state = payload.empty() ? CommState::QueryAck : CommState::CommandAck;
 
   return Result::Ack;
 }
 
 void DaikinSerial::flush_input() {  // would be a nice ESPHome API improvement
-  uint8_t byte;
-  while (rx_uart->available()) {
-    rx_uart->read_byte(&byte);
+  while (this->rx_uart->available()) {
+    uint8_t byte;
+    this->rx_uart->read_byte(&byte);
   }
 }
 
-bool DaikinS21::is_query_active(std::string_view query) {
-  return std::ranges::find(queries, query) != queries.end();
+/**
+ * Trigger a query cycle
+ *
+ * Set a flag and reenable the service loop to handle it.
+ */
+void DaikinS21::trigger_cycle() {
+  cycle_triggered = true;
+  this->enable_loop();
 }
 
 bool DaikinS21::prune_query(std::string_view query) {
-  const auto it = std::ranges::find(queries, query);
-  if (it != queries.end()) {
-    queries.erase(it);
+  const auto it = std::ranges::find(this->queries, query);
+  if (it != this->queries.end()) {
+    this->queries.erase(it);
     return true;
   } else {
     return false;
@@ -377,12 +383,12 @@ bool DaikinS21::prune_query(std::string_view query) {
 void DaikinS21::refine_queries() {
   if (this->ready.all() == false) {
     if (this->ready[ReadyProtocolVersion] == false) {
-      if (determine_protocol_version()) {
-        prune_query("F8");
-        prune_query("FC");
-        prune_query("FY00");
-        prune_query("M");
-        prune_query("V");
+      if (this->determine_protocol_version()) {
+        this->prune_query(StateQuery::OldProtocol);
+        this->prune_query(StateQuery::ModelCode);
+        this->prune_query(StateQuery::NewProtocol);
+        this->prune_query(MiscQuery::Model);
+        this->prune_query(MiscQuery::Version);
         ESP_LOGI(TAG, "Protocol version %" PRIu8 ".%" PRIu8 " detected", this->protocol_version.major, this->protocol_version.minor);
         this->ready.set(ReadyProtocolVersion);
       }
@@ -390,19 +396,19 @@ void DaikinS21::refine_queries() {
     // Some units don't support more granular sensor queries
     if (this->ready[ReadySensorReadout] == false) {
       // TODO there's a chance that communication doesn't work at all so we didn't receive a NAK and these are still active. add an "acked" tracker to the queries if this is a concern.
-      if (DaikinS21::is_query_active("RH") && DaikinS21::is_query_active("Ra")) {
-        prune_query("F9");  // support for discrete granular sensors, no need for inferior consolidated query
+      if (this->is_query_active(EnvironmentQuery::InsideTemperature) && this->is_query_active(EnvironmentQuery::OutsideTemperature)) {
+        this->prune_query(StateQuery::InsideOutsideTemperatures);  // support for discrete granular sensors, no need for inferior consolidated query
       }
       this->ready.set(ReadySensorReadout);
     }
     if (this->ready[ReadyCapabilities] == false) {
       if (this->G2_model_info != 0) {
-        prune_query("F2");
+        this->prune_query(StateQuery::OptionalFeatures);
         if (this->support_swing) {
-          this->queries.emplace_back("RN");
+          this->queries.emplace_back(EnvironmentQuery::VerticalSwingAngle);
         }
         if (this->support_humidity) {
-          this->queries.emplace_back("Re");
+          this->queries.emplace_back(EnvironmentQuery::IndoorHumidity);
         }
         ESP_LOGI(TAG, "Capabilities detected: model info %c", this->G2_model_info);
         this->ready.set(ReadyCapabilities);
@@ -412,32 +418,38 @@ void DaikinS21::refine_queries() {
 }
 
 /**
- * Select the next command to issue to the unit
+ * Perform the next action when the communication state is idle
+ *
+ * Usually selects the next command to issue to the unit
+ *
+ * Handle the results of the cycle if the last command was already issued:
+ * - Process and report the results if the cycle was just completed
+ * - Start the next cycle if free running or triggered in polling mode
  */
-void DaikinS21::tx_next() {
+void DaikinS21::do_next_action() {
   std::array<uint8_t, DaikinSerial::S21_PAYLOAD_SIZE> payload;
 
   // Apply any pending settings
   // Important to clear the activate flag here as another command can be queued while waiting for this one to complete
   if (this->activate_climate) {
     this->activate_climate = false;
-    this->tx_command = "D1";
+    this->tx_command = StateCommand::PowerModeTempFan;
     payload[0] = (this->pending.mode == climate::CLIMATE_MODE_OFF) ? '0' : '1'; // power
     payload[1] = climate_mode_to_daikin(this->pending.mode);
     payload[2] = (static_cast<int16_t>(this->pending.setpoint) / 5) + 28;
     payload[3] = static_cast<char>(this->pending.fan);
-    this->serial.send_frame(tx_command, payload);
+    this->serial.send_frame(this->tx_command, payload);
     return;
   }
 
   if (activate_swing_mode) {
     this->activate_swing_mode = false;
-    this->tx_command = "D5";
+    this->tx_command = StateCommand::LouvreSwing;
     payload[0] = climate_swing_mode_to_daikin(this->pending.swing);
     payload[1] = (this->pending.swing != climate::CLIMATE_SWING_OFF) ? '?' : '0';
     payload[2] = '0';
     payload[3] = '0';
-    this->serial.send_frame(tx_command, payload);
+    this->serial.send_frame(this->tx_command, payload);
     return;
   }
 
@@ -448,71 +460,85 @@ void DaikinS21::tx_next() {
     if ((this->active.preset != this->pending.preset) && (this->active.preset != climate::CLIMATE_PRESET_NONE)) {
       preset = this->active.preset;
       enable = false;
+      if (this->pending.preset == climate::CLIMATE_PRESET_NONE) {
+        this->activate_preset = false;  // don't execute again if we're just disabling the current preset
+      }
     } else {
-      
       preset = this->pending.preset;
       enable = true;
+      this->activate_preset = false;  // don't execute again if we're setting the desired preset
     }
-
     switch (preset) {
-    case climate::CLIMATE_PRESET_BOOST:  // powerful
-      this->tx_command = "D6";
-      payload[0] = enable ? '2' : '0';
-      payload[1] = '0';
-      payload[2] = '0';
-      payload[3] = '0';
-      break;
-    case climate::CLIMATE_PRESET_ECO: // econo
-      this->tx_command = "D7";
-      payload[0] = '0';
-      payload[1] = enable ? '2' : '0';
-      payload[2] = '0';
-      payload[3] = '0';
-      break;
-    case climate::CLIMATE_PRESET_NONE:
-    default:
-      break;
+      case climate::CLIMATE_PRESET_BOOST:
+        this->tx_command = StateCommand::Powerful;
+        payload[0] = enable ? '2' : '0';
+        payload[1] = '0';
+        payload[2] = '0';
+        payload[3] = '0';
+        this->serial.send_frame(this->tx_command, payload);
+        return;
+      case climate::CLIMATE_PRESET_ECO:
+        this->tx_command = StateCommand::Econo;
+        payload[0] = '0';
+        payload[1] = enable ? '2' : '0';
+        payload[2] = '0';
+        payload[3] = '0';
+        this->serial.send_frame(this->tx_command, payload);
+        return;
+      case climate::CLIMATE_PRESET_NONE:
+      default:
+        break;
     }
+  }
 
-    // we don't need to execute again if we have set the preset or just wanted to disable the existing
-    if (enable || (this->pending.preset == climate::CLIMATE_PRESET_NONE)) {
-      this->activate_preset = false;
-    }
-    this->serial.send_frame(tx_command, payload);
-    return;
-  }
-  
-  // Periodic polling queries
+  // Periodic query cycle
   if (this->current_query != this->queries.end()) {
-    this->tx_command = *current_query;  // query scan underway, continue
-    this->serial.send_frame(tx_command);
+    this->tx_command = *current_query;  // query cycle underway, continue
+    this->serial.send_frame(this->tx_command);
     return;
   }
-  
-  // Polling query scan complete
-  refine_queries();
-  if (this->ready.all()) {
-    // process results
-    this->action_resolved = resolve_climate_action();
-    if (this->modifiers[ModifierPowerful]) {
-      this->active.preset = climate::CLIMATE_PRESET_BOOST;
-    } else if (this->modifiers[ModifierEcono]) {
-      this->active.preset = climate::CLIMATE_PRESET_ECO;
-    } else {
-      this->active.preset = climate::CLIMATE_PRESET_NONE;
+
+  // Query cycle complete
+  const auto now = millis();
+
+  // Are there fresh results to process?
+  if (this->cycle_completed) {
+    this->cycle_completed = false;
+    this->cycle_time_ms = now - this->cycle_time_start_ms;
+    if (this->ready.all()) {
+      this->action_resolved = resolve_climate_action();
+      if (this->modifiers[ModifierPowerful]) {
+        this->active.preset = climate::CLIMATE_PRESET_BOOST;
+      } else if (this->modifiers[ModifierEcono]) {
+        this->active.preset = climate::CLIMATE_PRESET_ECO;
+      } else {
+        this->active.preset = climate::CLIMATE_PRESET_NONE;
+      }
+      // signal there's fresh data
+      this->binary_sensor_callback_.call(this->unit_state, this->system_state);
+      this->climate_callback_.call();
     }
-    // signal there's fresh data
-    this->binary_sensor_callback_.call(this->unit_state, this->system_state);
-    this->climate_callback_.call();
+    if ((now - last_state_dump_ms) > (60 * 1000)) {
+      last_state_dump_ms = now;
+      this->dump_state();
+    }
   }
-  
-  // Start fresh polling query scan (only after current scan is complete)
-  this->current_query = queries.begin();
-  this->tx_command = *current_query;
-  uint32_t now = millis();
-  this->cycle_time_ms = now - this->cycle_time_start_ms;
+
+  // Handle polled execution state
+  if (this->is_free_run() == false) {
+    if (this->cycle_triggered == false) {
+      this->disable_loop(); // single cycle now complete, disable this state machine and wait for the next poll to start it again
+      return;
+    }
+    this->cycle_triggered = false;  // single cycle triggered, kick it off below
+  }
+
+  // Start fresh polling query cycle
   this->cycle_time_start_ms = now;
-  this->serial.send_frame(tx_command);
+  this->refine_queries();
+  this->current_query = queries.begin();
+  this->tx_command = *(this->current_query);
+  this->serial.send_frame(this->tx_command);
 }
 
 static DaikinC10 temp_bytes_to_c10(std::span<const uint8_t> bytes) { return bytes_to_num(bytes); }
@@ -524,17 +550,21 @@ void DaikinS21::parse_ack() {
   std::span<const uint8_t> rcode{};
   std::span<const uint8_t> payload{};
 
-  ESP_LOGV(TAG, "Rx: ACK from S21 for command %" PRI_SV, PRI_SV_ARGS(tx_command));
+  ESP_LOGV(TAG, "Rx: ACK from S21 for command %" PRI_SV, PRI_SV_ARGS(this->tx_command));
 
   // prepare response buffers for decoding
   if (serial.response.empty()) {
     // commands don't return anything except an Ack, pretend we received the command itself to provide something to distinguish handling below
-    rcode = { reinterpret_cast<const uint8_t *>(tx_command.data()), tx_command.size() };
+    rcode = { reinterpret_cast<const uint8_t *>(this->tx_command.data()), this->tx_command.size() };
   } else {
-    rcode = { serial.response.begin(), tx_command.size() };
-    payload = { serial.response.begin() + rcode.size(), serial.response.end() };
-    // query response reveived, move to the next one
-    current_query++;
+    rcode = { this->serial.response.begin(), this->tx_command.size() };
+    payload = { this->serial.response.begin() + rcode.size(), this->serial.response.end() };
+    // query response reveived, move to the next one or flag if it was the last
+    // pushing along the state machine in here lets us easily interleve commands in a cycle
+    this->current_query++;
+    if (this->current_query == this->queries.end()) {
+      this->cycle_completed = true;
+    }
   }
 
   switch (rcode[0]) {
@@ -583,15 +613,17 @@ void DaikinS21::parse_ack() {
           this->modifiers[ModifierEcono] =    (payload[1] == '2');
           return;
         case '8':  // F8 -> G8 -- Original protocol version
-          std::copy_n(std::begin(payload), std::min(payload.size(), this->detect_responses.G8.size()), std::begin(this->detect_responses.G8));
+          std::copy_n(payload.begin(), std::min(payload.size(), this->detect_responses.G8.size()), this->detect_responses.G8.begin());
           return;
         case '9':  // F9 -> G9 -- Temperature and humidity, better granularity in RH, Ra and Re
           this->temp_inside = temp_f9_byte_to_c10(payload[0]);  // 1 degree
           this->temp_outside = temp_f9_byte_to_c10(payload[1]); // 1 degree, danijelt reports 0xFF when unsupported
-          this->humidity = payload[2] - '0';  // 5%, danijelt reports 0xFF when unsupported
+          if ((payload[2] - '0') <= 100) {  // Some units report 0xFF when unsupported
+            this->humidity = payload[2] - '0';  // 5% granularity
+          }
           return;
         case 'C':  // FC -> GC -- Model code (hex, not reversed here)
-          std::copy_n(std::begin(payload), std::min(payload.size(), this->detect_responses.GC.size()), std::begin(this->detect_responses.GC));
+          std::copy_n(payload.begin(), std::min(payload.size(), this->detect_responses.GC.size()), this->detect_responses.GC.begin());
           return;
         case 'Y':
           if ((rcode[2] == '0') && (rcode[3] == '0')) { // FY00 -> GY00 Newer protocol version
@@ -669,11 +701,11 @@ void DaikinS21::parse_ack() {
       break;
 
     case 'M':  // some sort of model? always "3E53" for me, regardless of head unit
-      std::copy_n(std::begin(payload), std::min(payload.size(), this->detect_responses.M.size()), std::begin(this->detect_responses.M));
+      std::copy_n(payload.begin(), std::min(payload.size(), this->detect_responses.M.size()), this->detect_responses.M.begin());
       return;
 
     case 'V':  // purportedly another version, always "00C0" for me
-      std::copy_n(std::begin(payload), std::min(payload.size(), this->detect_responses.V.size()), std::begin(this->detect_responses.V));
+      std::copy_n(payload.begin(), std::min(payload.size(), this->detect_responses.V.size()), this->detect_responses.V.begin());
       return;
 
     default:
@@ -710,17 +742,17 @@ void DaikinS21::parse_ack() {
 }
 
 void DaikinS21::handle_nak() {
-  ESP_LOGW(TAG, "Rx: NAK from S21 for %" PRI_SV, PRI_SV_ARGS(tx_command));
-  if (tx_command == *current_query) {
-    ESP_LOGW(TAG, "Removing %" PRI_SV " from query pool (assuming unsupported)", PRI_SV_ARGS(tx_command));
-    nak_queries.emplace_back(*current_query);
+  ESP_LOGW(TAG, "Rx: NAK from S21 for %" PRI_SV, PRI_SV_ARGS(this->tx_command));
+  if (this->tx_command == *(this->current_query)) {
+    ESP_LOGW(TAG, "Removing %" PRI_SV " from query pool (assuming unsupported)", PRI_SV_ARGS(this->tx_command));
+    this->nak_queries.emplace_back(*(this->current_query));
     // current_query iterator will be invalidated, recover index and recreate
-    const auto index = std::distance(queries.begin(), current_query);
-    queries.erase(current_query);
-    current_query = queries.begin() + index;
+    const auto index = std::distance(this->queries.begin(), this->current_query);
+    this->queries.erase(this->current_query);
+    this->current_query = this->queries.begin() + index;
   } else {
-    ESP_LOGW(TAG, "Acknowledging %" PRI_SV " command despite NAK", PRI_SV_ARGS(tx_command));
-    parse_ack();  // don't get stuck retrying unsupported command
+    ESP_LOGW(TAG, "Acknowledging %" PRI_SV " command despite NAK", PRI_SV_ARGS(this->tx_command));
+    this->parse_ack();  // don't get stuck retrying unsupported command
   }
 }
 
@@ -728,7 +760,7 @@ void DaikinS21::handle_nak() {
  * Determine the protocol version according to Faikin documentation.
  *
  * @note This is mostly untested, I own only one Daikin system.
- * 
+ *
  * @return true protocl version was detected
  * @return false protocol version wasn't detected
  */
@@ -741,30 +773,35 @@ bool DaikinS21::determine_protocol_version() {
     this->protocol_version = {0,0};
     return true;
   }
-  if (std::ranges::equal(this->detect_responses.G8, G8_version2or3) && (is_query_active("FY00") == false)) {
-    this->protocol_version = {2,0};  // NAK rules out 3.0
-    return true;
-  }
-  switch (this->detect_responses.GY00) {
-    case 300:
-      if (std::ranges::equal(this->detect_responses.G8, G8_version2or3)) {
-        this->protocol_version = {3,0};  // ACK means 3.0 has support for this query
-        return true;
-      }
-      if (std::ranges::equal(this->detect_responses.G8, G8_version31plus)) {
-        this->protocol_version = {3,1};
-        return true;
-      }
-      break;
-    case 320:
-      this->protocol_version = {3,2};
+
+  if ((is_query_active(StateQuery::NewProtocol) == false)) {
+    if (std::ranges::equal(this->detect_responses.G8, G8_version2or3) || std::ranges::equal(this->detect_responses.G8, G8_version31plus)) {
+      this->protocol_version = {2,0};  // NAK for NewProtocol rules out 3.0
       return true;
-    case 340:
-      this->protocol_version = {3,4};
-      return true;
-    default:
-      break;
+    }
+  } else {
+    switch (this->detect_responses.GY00) {
+      case 300:
+        if (std::ranges::equal(this->detect_responses.G8, G8_version2or3)) {
+          this->protocol_version = {3,0};  // ACK for NewProtocol means 3.0 has support for this query
+          return true;
+        }
+        if (std::ranges::equal(this->detect_responses.G8, G8_version31plus)) {
+          this->protocol_version = {3,1};
+          return true;
+        }
+        break;
+      case 320:
+        this->protocol_version = {3,2};
+        return true;
+      case 340:
+        this->protocol_version = {3,4};
+        return true;
+      default:
+        break;
+    }
   }
+  ESP_LOGE(TAG, "Unable to detect a protocol version, will not function: %s, %d", str_repr(this->detect_responses.G8).c_str(), this->detect_responses.GY00);
   return false; // not detected yet or unsupported
 }
 
@@ -772,56 +809,67 @@ void DaikinS21::setup() {
   // populate initial messages to poll
   // clang-format off
   queries = {
-      // Protocol version detect:
-      "F8", "FY00", "M", "FC", "V",
+      // Protocol version detect
+      StateQuery::OldProtocol,
+      StateQuery::NewProtocol,
+      StateQuery::ModelCode,
+      MiscQuery::Model,
+      MiscQuery::Version,
       // Basic sensor support
-      "F9", "RH", "RI", "RL", "Ra",
-      // Standard:
-      "F1", "F2", "F5", "F6", "F7",
-      "RG", "RX",
-      "Rb", "Rd",
+      StateQuery::InsideOutsideTemperatures,
+      EnvironmentQuery::InsideTemperature,
+      EnvironmentQuery::LiquidTemperature,
+      EnvironmentQuery::FanSpeed,
+      EnvironmentQuery::OutsideTemperature,
+      // Standard
+      StateQuery::Basic,
+      StateQuery::OptionalFeatures,
+      StateQuery::SwingOrHumidity,
+      StateQuery::SpecialModes,
+      StateQuery::DemandAndEcono,
+      EnvironmentQuery::FanMode,
+      EnvironmentQuery::TargetTemperature,
+      EnvironmentQuery::IndoorFrequencyCommandSignal,
+      EnvironmentQuery::CompressorFrequency,
       // State
-      "RzB2",
-      "RzC3",
-      // redundant:
-      // "RB", "RC", "RF",
-      // unused:
-      // "F3",  // on/off timer. use home assistant.
-      // not handled yet:
-      // "F4",
-      // "Rz52",
-      // "Rz72",
-      // "RW", // always "00"?
-      // Observed BRP device querying these.
-      // "FU0F",
-      // Query Experiments
-      // "RA",
-      // "RK", "RM",
+      EnvironmentQuery::UnitState,
+      EnvironmentQuery::SystemState,
+      // Redundant
+      // EnvironmentQuery::PowerOnOff,
+      // EnvironmentQuery::IndoorUnitMode,
+      // EnvironmentQuery::TemperatureSetPoint,
+      // Unused
+      // StateQuery::OnOffTimer,  // use home assistant for scheduling
+      // Not handled yet
+      // StateQuery::ErrorStatus,
+      // StateQuery::FanSetPoint,
+      // StateQuery::LouvreAngleSetPoint,
   };
   // clang-format on
-  current_query = queries.begin();
+  current_query = this->queries.begin();
 }
 
 void DaikinS21::loop() {
   using Result = DaikinSerial::Result;
 
-  switch (serial.service()) {
+  switch (this->serial.service()) {
     case Result::Ack:
-      parse_ack();
+      this->parse_ack();
       break;
 
     case Result::Idle:
-      tx_next();
+      this->do_next_action();
       break;
 
     case Result::Nak:
-      handle_nak();
+      this->handle_nak();
       break;
 
     case Result::Error:
-      current_query = queries.end();
-      activate_climate = false;
-      activate_swing_mode = false;
+      this->cycle_completed = true;
+      this->activate_climate = false;
+      this->activate_swing_mode = false;
+      this->activate_preset = false;
       break;
 
     case Result::Timeout:
@@ -833,9 +881,17 @@ void DaikinS21::loop() {
   }
 }
 
+/**
+ * PollingComponent update loop.
+ *
+ * Disable the polling loop (this function) if configured to free run.
+ * Trigger a cycle if configured for periodic polling.
+ */
 void DaikinS21::update() {
-  if (this->debug_protocol) {
-    this->dump_state();
+  if (this->is_free_run()) {
+    this->stop_poller();
+  } else {
+    this->trigger_cycle();
   }
 }
 
@@ -907,14 +963,17 @@ void DaikinS21::set_climate_settings(const DaikinSettings &settings) {
     }
 
     activate_climate = true;
+    this->trigger_cycle();
   }
 
   if (pending.swing != settings.swing) {
     activate_swing_mode = true;
+    this->trigger_cycle();
   }
 
   if (pending.preset != settings.preset) {
     activate_preset = true;
+    this->trigger_cycle();
   }
 
   pending = settings;
@@ -952,5 +1011,4 @@ void DaikinS21::add_binary_sensor_callback(std::function<void(DaikinUnitState, D
   this->binary_sensor_callback_.add(std::move(callback));
 }
 
-}  // namespace daikin_s21
-}  // namespace esphome
+} // namespace esphome::daikin_s21

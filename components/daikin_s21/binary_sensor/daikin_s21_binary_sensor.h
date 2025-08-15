@@ -5,8 +5,7 @@
 #include "esphome/core/helpers.h"
 #include "../s21.h"
 
-namespace esphome {
-namespace daikin_s21 {
+namespace esphome::daikin_s21 {
 
 class DaikinS21BinarySensor : public Component,
                               public Parented<DaikinS21> {
@@ -51,5 +50,4 @@ class DaikinS21BinarySensor : public Component,
   binary_sensor::BinarySensor *multizone_conflict_sensor_{};
 };
 
-}  // namespace daikin_s21
-}  // namespace esphome
+} // namespace esphome::daikin_s21
