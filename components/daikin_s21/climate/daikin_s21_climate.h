@@ -8,8 +8,7 @@
 #include "../daikin_s21_fan_modes.h"
 #include "../s21.h"
 
-namespace esphome {
-namespace daikin_s21 {
+namespace esphome::daikin_s21 {
 
 class DaikinS21Climate : public climate::Climate,
                          public Component,
@@ -62,5 +61,4 @@ class DaikinS21Climate : public climate::Climate,
   void set_command_timeout(uint32_t delay_ms = state_publication_timeout_ms);
 };
 
-}  // namespace daikin_s21
-}  // namespace esphome
+} // namespace esphome::daikin_s21

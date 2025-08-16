@@ -5,8 +5,7 @@
 #include "esphome/core/helpers.h"
 #include "../s21.h"
 
-namespace esphome {
-namespace daikin_s21 {
+namespace esphome::daikin_s21 {
 
 class DaikinS21Sensor : public PollingComponent,
                         public Parented<DaikinS21> {
@@ -50,5 +49,4 @@ class DaikinS21Sensor : public PollingComponent,
   sensor::Sensor *demand_sensor_{};
 };
 
-}  // namespace daikin_s21
-}  // namespace esphome
+} // namespace esphome::daikin_s21

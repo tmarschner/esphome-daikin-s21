@@ -1,7 +1,6 @@
 #include "daikin_s21_sensor.h"
 
-namespace esphome {
-namespace daikin_s21 {
+namespace esphome::daikin_s21 {
 
 static const char *const TAG = "daikin_s21.sensor";
 
@@ -46,5 +45,4 @@ void DaikinS21Sensor::dump_config() {
   LOG_SENSOR("  ", "Demand", this->demand_sensor_);
 }
 
-}  // namespace daikin_s21
-}  // namespace esphome
+} // namespace esphome::daikin_s21

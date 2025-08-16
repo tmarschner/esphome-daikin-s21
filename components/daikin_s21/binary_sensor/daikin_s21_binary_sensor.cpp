@@ -1,7 +1,6 @@
 #include "daikin_s21_binary_sensor.h"
 
-namespace esphome {
-namespace daikin_s21 {
+namespace esphome::daikin_s21 {
 
 static const char *const TAG = "daikin_s21.binary_sensor";
 
@@ -49,5 +48,4 @@ void DaikinS21BinarySensor::dump_config() {
   LOG_BINARY_SENSOR("  ", "Multizone Conflict", this->multizone_conflict_sensor_);
 }
 
-}  // namespace daikin_s21
-}  // namespace esphome
+} // namespace esphome::daikin_s21

@@ -68,6 +68,6 @@ async def to_code(config):
 
     if CONF_SUPPORTED_PRESETS in config:
         cg.add(var.set_supported_presets_override(config[CONF_SUPPORTED_PRESETS]))
-    
+
     if CONF_SUPPORTS_HUMIDITY in config:
         cg.add(var.set_supports_current_humidity(config[CONF_SUPPORTS_HUMIDITY]))

@@ -3,8 +3,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace esphome {
-namespace daikin_s21 {
+namespace esphome::daikin_s21 {
 
 enum class DaikinFanMode : uint8_t {
   Auto = 'A',
@@ -55,5 +54,4 @@ constexpr DaikinFanMode string_to_daikin_fan_mode(const std::string_view mode) {
   return DaikinFanMode::Auto;
 }
 
-}  // namespace daikin_s21
-}  // namespace esphome
+} // namespace esphome::daikin_s21

@@ -7,8 +7,7 @@
 
 using namespace esphome;
 
-namespace esphome {
-namespace daikin_s21 {
+namespace esphome::daikin_s21 {
 
 constexpr float SETPOINT_STEP = 0.5F; // ESPHome thermostat calculations -- unit's internal support and visual step may differ
 
@@ -35,8 +34,8 @@ void DaikinS21Climate::setup() {
       climate::CLIMATE_MODE_DRY,
   });
   std::array<std::string, std::size(supported_daikin_fan_modes)> supported_fan_mode_strings;
-  std::ranges::transform(supported_daikin_fan_modes, std::begin(supported_fan_mode_strings), [](const auto &arg){ return daikin_fan_mode_to_string_view(arg); } );
-  this->traits_.set_supported_custom_fan_modes({std::begin(supported_fan_mode_strings), std::end(supported_fan_mode_strings)});
+  std::ranges::transform(supported_daikin_fan_modes, supported_fan_mode_strings.begin(), [](const auto &arg){ return daikin_fan_mode_to_string_view(arg); } );
+  this->traits_.set_supported_custom_fan_modes({supported_fan_mode_strings.begin(), supported_fan_mode_strings.end()});
   this->traits_.set_supported_swing_modes({
       climate::CLIMATE_SWING_OFF,
       climate::CLIMATE_SWING_BOTH,
@@ -53,7 +52,7 @@ void DaikinS21Climate::setup() {
 }
 /**
  * Command timeout handler
- * 
+ *
  * Called when a command times out without seeming to take effect.
  * Trigger a publish of the current state.
  */
@@ -64,7 +63,7 @@ void DaikinS21Climate::command_timeout_handler() {
 
 /**
  * Update handler
- * 
+ *
  * Update climate state if a previous command isn't in progress.
  * Publish any state changes to Home Assistant.
  *
@@ -78,7 +77,7 @@ void DaikinS21Climate::update_handler() {
     this->command_active = false;
     this->cancel_timeout(command_timeout_name);
   }
-  
+
   // Don't publish current state if a command is in progress -- avoids UI glitches
   if (command_active == false) {
     // Allowed to publish, determine if we should
@@ -168,7 +167,7 @@ void DaikinS21Climate::dump_config() {
  * Override supported modes
  *
  * @note Modifies traits, call during setup only
- * 
+ *
  * @param modes modes to support
  */
 void DaikinS21Climate::set_supported_modes_override(std::set<climate::ClimateMode> modes) {
@@ -181,7 +180,7 @@ void DaikinS21Climate::set_supported_modes_override(std::set<climate::ClimateMod
  * Override supported presets
  *
  * @note Modifies traits, call during setup only
- * 
+ *
  * @param presets presets to support
  */
 void DaikinS21Climate::set_supported_presets_override(std::set<climate::ClimatePreset> presets) {
@@ -193,7 +192,7 @@ void DaikinS21Climate::set_supported_presets_override(std::set<climate::ClimateP
  * Configure to report humidity
  *
  * @note Modifies traits, call during setup only
- * 
+ *
  * @param supports_current_humidity true to report humidity, false to disable
  */
 void DaikinS21Climate::set_supports_current_humidity(const bool supports_current_humidity) {
@@ -202,7 +201,7 @@ void DaikinS21Climate::set_supports_current_humidity(const bool supports_current
 
 void DaikinS21Climate::set_custom_fan_mode(const DaikinFanMode mode) {
   this->commanded.fan = mode;
-  this->custom_fan_mode = static_cast<std::string>(daikin_fan_mode_to_string_view(mode)); 
+  this->custom_fan_mode = static_cast<std::string>(daikin_fan_mode_to_string_view(mode));
 }
 
 bool DaikinS21Climate::use_room_sensor() {
@@ -318,7 +317,7 @@ bool DaikinS21Climate::should_check_setpoint() {
 
 /**
  * Inherited ESPHome climate control call handler.
- * 
+ *
  * Populates internal state with contained arguments then applies to the unit.
  *
  * @param call the call to process
@@ -383,7 +382,7 @@ void DaikinS21Climate::set_s21_climate() {
  * takes effect or is given enough time to take effect or we get a jumpy UI
  * in Home Assistant as stale state is published over the commanded state
  * followed by the active state.
- * 
+ *
  * If the timeout expires the state will be published regardless.
  */
 void DaikinS21Climate::set_command_timeout(const uint32_t delay_ms /*= state_publication_timeout_ms*/) {
@@ -391,5 +390,4 @@ void DaikinS21Climate::set_command_timeout(const uint32_t delay_ms /*= state_pub
   this->set_timeout(command_timeout_name, delay_ms, std::bind(&DaikinS21Climate::command_timeout_handler, this));
 }
 
-}  // namespace daikin_s21
-}  // namespace esphome
+} // namespace esphome::daikin_s21

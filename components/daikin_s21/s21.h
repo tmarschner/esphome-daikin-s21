@@ -11,9 +11,9 @@
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/component.h"
 #include "daikin_s21_fan_modes.h"
+#include "daikin_s21_queries.h"
 
-namespace esphome {
-namespace daikin_s21 {
+namespace esphome::daikin_s21 {
 
 // printf format specifier macros for std::string_view
 #define PRI_SV ".*s"
@@ -32,14 +32,14 @@ public:
     Timeout,
     Busy,
   };
-  
+
   DaikinSerial() {};
   DaikinSerial(uart::UARTComponent *tx, uart::UARTComponent *rx);
-  
+
   Result service();
   Result send_frame(std::string_view cmd, std::span<const uint8_t> payload = {});
   void flush_input();
-  
+
   std::vector<uint8_t> response{};
   bool debug{false};
 
@@ -81,7 +81,7 @@ struct DaikinC10 {
   constexpr float f_degf() const { return celsius_to_fahrenheit(static_cast<float>(*this)); }
 
   constexpr bool operator==(const DaikinC10 &other) const = default;
-  
+
 private:
   int16_t value{};
 };
@@ -133,7 +133,7 @@ class DaikinS21 : public PollingComponent {
 
   // external command action
   void set_climate_settings(const DaikinSettings &settings);
-  
+
   void add_climate_callback(std::function<void(void)> &&callback);
   void add_binary_sensor_callback(std::function<void(DaikinUnitState, DaikinSystemState)> &&callback);
 
@@ -157,7 +157,7 @@ class DaikinS21 : public PollingComponent {
 
   void dump_state();
   void refine_queries();
-  void tx_next();
+  void do_next_action();
   void parse_ack();
   void handle_nak();
 
@@ -174,16 +174,25 @@ class DaikinS21 : public PollingComponent {
   std::bitset<ReadyCount> ready{};
 
   // communication state
-  bool is_query_active(std::string_view query);
+  bool is_free_run() const {
+    return this->get_update_interval() == 0;
+  }
+  void trigger_cycle();
+  bool is_query_active(std::string_view query) const {
+    return std::ranges::find(this->queries, query) != this->queries.end();
+  }
   bool prune_query(std::string_view query);
+  bool cycle_triggered{};
+  bool cycle_completed{};
   std::vector<std::string_view> queries{};
   std::vector<std::string_view>::iterator current_query{};
   std::string_view tx_command{};  // used when matching responses - backing value must have persistent lifetime across serial state machine runs
-  
+
   // debugging support
   bool debug_protocol{false};
   std::unordered_map<std::string, std::vector<uint8_t>> val_cache{};
   std::vector<std::string_view> nak_queries{};
+  uint32_t last_state_dump_ms{};
   uint32_t cycle_time_start_ms{};
   uint32_t cycle_time_ms{};
 
@@ -196,7 +205,7 @@ class DaikinS21 : public PollingComponent {
 
   // current values
   climate::ClimateAction action_reported = climate::CLIMATE_ACTION_OFF; // raw readout
-  climate::ClimateAction action_resolved = climate::CLIMATE_ACTION_OFF; // corrected at end of scan
+  climate::ClimateAction action_resolved = climate::CLIMATE_ACTION_OFF; // corrected at end of cycle
   DaikinC10 temp_inside{};
   DaikinC10 temp_target{};
   DaikinC10 temp_outside{};
@@ -242,5 +251,4 @@ class DaikinS21 : public PollingComponent {
   climate::ClimateAction resolve_climate_action();
 };
 
-}  // namespace daikin_s21
-}  // namespace esphome
+} // namespace esphome::daikin_s21
