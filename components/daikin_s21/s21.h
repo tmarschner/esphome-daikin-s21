@@ -13,54 +13,19 @@
 #include "esphome/core/component.h"
 #include "daikin_s21_fan_modes.h"
 #include "daikin_s21_queries.h"
+#include "daikin_s21_serial.h"
 
 namespace esphome::daikin_s21 {
 
-// printf format specifier macros for std::string_view
-#define PRI_SV ".*s"
-#define PRI_SV_ARGS(x) (x).size(), (x).data()
-
-class DaikinSerial {
-public:
-  static constexpr uint32_t S21_MAX_COMMAND_SIZE{4};
-  static constexpr uint32_t S21_PAYLOAD_SIZE{4};
-
-  enum class Result : uint8_t {
-    Idle,
-    Ack,
-    Nak,
-    Error,
-    Timeout,
-    Busy,
-  };
-
-  DaikinSerial(uart::UARTComponent &uart);
-
-  Result service();
-  Result send_frame(std::string_view cmd, std::span<const uint8_t> payload = {});
-  void flush_input();
-
-  std::vector<uint8_t> response{};
-  bool debug{false};
-
-private:
-  Result handle_rx(uint8_t byte);
-
-  enum class CommState : uint8_t {
-    Idle = 0,
-    CommandAck,
-    QueryAck,
-    QueryStx,
-    QueryEtx,
-    AckResponseDelay,
-    NextTxDelay,
-    ErrorDelay,
-  };
-
-  uart::UARTComponent &uart;
-  CommState comm_state{};
-  uint8_t rx_bytes_last_call{};
-  uint32_t last_event_time_ms{};
+enum ProtocolVersion {
+  ProtocolUndetected,
+  ProtocolUnknown,
+  Protocol0,
+  Protocol2,
+  Protocol3_0,
+  Protocol3_1,
+  Protocol3_2,
+  Protocol3_4,
 };
 
 /**
@@ -125,15 +90,14 @@ struct DaikinSettings {
 
 class DaikinS21 : public PollingComponent {
  public:
-  DaikinS21(uart::UARTComponent *uart) : serial(*uart) {} // required in config, non-null
+  DaikinS21(DaikinSerial * const serial) : serial(*serial) {} // required in config, non-null
 
   void setup() override;
   void loop() override;
   void update() override;
   void dump_config() override;
 
-  void set_debug_comms(bool set) { this->serial.debug = set; }
-  void set_debug_protocol(bool set) { this->debug_protocol = set; }
+  void set_debug(bool set) { this->debug = set; }
 
   // external command action
   void set_climate_settings(const DaikinSettings &settings);
@@ -156,14 +120,15 @@ class DaikinS21 : public PollingComponent {
   auto get_humidity() { return this->humidity; }
   auto get_demand() { return this->demand; }
 
+  void handle_serial_result(DaikinSerial::Result result, std::span<const uint8_t> response = {});
+
  protected:
-  DaikinSerial serial;
+  DaikinSerial &serial;
 
   void dump_state();
   void refine_queries();
   void do_next_action();
-  void parse_ack();
-  void handle_nak();
+  void parse_ack(std::span<const uint8_t> response);
 
   enum ReadyCommand : uint8_t {
     ReadyProtocolVersion,
@@ -190,7 +155,7 @@ class DaikinS21 : public PollingComponent {
   std::string_view tx_command{};  // used when matching responses - backing value must have persistent lifetime across serial state machine runs
 
   // debugging support
-  bool debug_protocol{false};
+  bool debug{};
   std::unordered_map<std::string, std::vector<uint8_t>> val_cache{};
   std::vector<std::string_view> nak_queries{};
   uint32_t last_state_dump_ms{};
@@ -200,9 +165,9 @@ class DaikinS21 : public PollingComponent {
   // settings
   DaikinSettings active{};
   DaikinSettings pending{ .mode = climate::CLIMATE_MODE_AUTO }; // unsupported sentinel value, see set_climate_settings
-  bool activate_climate{false};
-  bool activate_swing_mode{false};
-  bool activate_preset{false};
+  bool activate_climate{};
+  bool activate_swing_mode{};
+  bool activate_preset{};
 
   // current values
   climate::ClimateAction action_reported = climate::CLIMATE_ACTION_OFF; // raw readout
@@ -238,12 +203,9 @@ class DaikinS21 : public PollingComponent {
     uint16_t GY00{};
     std::array<uint8_t,4> M{};
     std::array<uint8_t,4> V{};
+    char G2_model_info{};
   } detect_responses;
-  struct ProtocolVersion {
-    uint8_t major{std::numeric_limits<uint8_t>::max()};
-    uint8_t minor{std::numeric_limits<uint8_t>::max()};
-  } protocol_version{};
-  char G2_model_info{};
+  ProtocolVersion protocol_version{ProtocolUndetected};
   bool support_swing{};
   bool support_horizontal_swing{};
   bool support_humidity{};

@@ -27,9 +27,6 @@ static constexpr DaikinFanMode supported_daikin_fan_modes[] = {
 
 constexpr std::string_view daikin_fan_mode_to_string_view(const DaikinFanMode mode) {
   switch (mode) {
-    case DaikinFanMode::Auto:
-    default:
-      return "Automatic";
     case DaikinFanMode::Silent:
       return "Silent";
     case DaikinFanMode::Speed1:
@@ -42,6 +39,9 @@ constexpr std::string_view daikin_fan_mode_to_string_view(const DaikinFanMode mo
       return "4";
     case DaikinFanMode::Speed5:
       return "5";
+    case DaikinFanMode::Auto:
+    default:
+      return "Automatic";
   }
 }
 

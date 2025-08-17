@@ -17,7 +17,6 @@ class DaikinS21Climate : public climate::Climate,
   void setup() override;
   void dump_config() override;
   void control(const climate::ClimateCall &call) override;
-  void command_timeout_handler();
   void update_handler();
 
   void set_supported_modes_override(std::set<climate::ClimateMode> modes);
@@ -59,6 +58,7 @@ class DaikinS21Climate : public climate::Climate,
   bool should_check_setpoint();
   void set_s21_climate();
   void set_command_timeout(uint32_t delay_ms = state_publication_timeout_ms);
+  void command_timeout_handler();
 };
 
 } // namespace esphome::daikin_s21
