@@ -2,6 +2,7 @@
 
 #include <bitset>
 #include <compare>
+#include <functional>
 #include <limits>
 #include <span>
 #include <string>
@@ -33,8 +34,7 @@ public:
     Busy,
   };
 
-  DaikinSerial() {};
-  DaikinSerial(uart::UARTComponent *tx, uart::UARTComponent *rx);
+  DaikinSerial(uart::UARTComponent &uart);
 
   Result service();
   Result send_frame(std::string_view cmd, std::span<const uint8_t> payload = {});
@@ -57,16 +57,17 @@ private:
     ErrorDelay,
   };
 
-  uart::UARTComponent *tx_uart{};
-  uart::UARTComponent *rx_uart{};
+  uart::UARTComponent &uart;
   CommState comm_state{};
+  uint8_t rx_bytes_last_call{};
   uint32_t last_event_time_ms{};
 };
 
 /**
  * Class representing a temperature in degrees C scaled by 10, the most granular internal temperature measurement format
  */
-struct DaikinC10 {
+class DaikinC10 {
+ public:
   constexpr DaikinC10() = default;
 
   template <typename T, typename std::enable_if_t<std::is_floating_point_v<T>, bool> = true>
@@ -82,14 +83,15 @@ struct DaikinC10 {
 
   constexpr bool operator==(const DaikinC10 &other) const = default;
 
-private:
+ private:
   int16_t value{};
 };
 
 /**
  * Unit state (RzB2) bitfield decoder
  */
-struct DaikinUnitState {
+class DaikinUnitState {
+ public:
   constexpr DaikinUnitState(const uint8_t value = 0U) : raw(value) {}
   constexpr bool powerful() const { return (this->raw & 0x1) != 0; }
   constexpr bool defrost() const { return (this->raw & 0x2) != 0; }
@@ -101,7 +103,8 @@ struct DaikinUnitState {
 /**
  * System state (RzC3) bitfield decoder
  */
-struct DaikinSystemState {
+class DaikinSystemState {
+ public:
   constexpr DaikinSystemState(const uint8_t value = 0U) : raw(value) {}
   constexpr bool locked() const { return (this->raw & 0x01) != 0; }
   constexpr bool active() const { return (this->raw & 0x04) != 0; }
@@ -122,20 +125,21 @@ struct DaikinSettings {
 
 class DaikinS21 : public PollingComponent {
  public:
+  DaikinS21(uart::UARTComponent *uart) : serial(*uart) {} // required in config, non-null
+
   void setup() override;
   void loop() override;
   void update() override;
   void dump_config() override;
 
-  void set_uarts(uart::UARTComponent *tx, uart::UARTComponent *rx) { this->serial = {tx, rx}; }
   void set_debug_comms(bool set) { this->serial.debug = set; }
   void set_debug_protocol(bool set) { this->debug_protocol = set; }
 
   // external command action
   void set_climate_settings(const DaikinSettings &settings);
 
-  void add_climate_callback(std::function<void(void)> &&callback);
-  void add_binary_sensor_callback(std::function<void(DaikinUnitState, DaikinSystemState)> &&callback);
+  std::function<void(void)> climate_callback{};
+  std::function<void(DaikinUnitState, DaikinSystemState)> binary_sensor_callback{};
 
   // value accessors
   bool is_ready() { return this->ready.all(); }
@@ -160,9 +164,6 @@ class DaikinS21 : public PollingComponent {
   void do_next_action();
   void parse_ack();
   void handle_nak();
-
-  CallbackManager<void(void)> climate_callback_{};
-  CallbackManager<void(DaikinUnitState, DaikinSystemState)> binary_sensor_callback_{};
 
   enum ReadyCommand : uint8_t {
     ReadyProtocolVersion,
