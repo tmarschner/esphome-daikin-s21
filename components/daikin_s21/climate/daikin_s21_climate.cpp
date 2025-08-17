@@ -9,9 +9,9 @@ using namespace esphome;
 
 namespace esphome::daikin_s21 {
 
-constexpr float SETPOINT_STEP = 0.5F; // ESPHome thermostat calculations -- unit's internal support and visual step may differ
-
 static const char *const TAG = "daikin_s21.climate";
+
+constexpr float SETPOINT_STEP = 0.5F; // ESPHome thermostat calculations -- unit's internal support and visual step may differ
 
 void DaikinS21Climate::setup() {
   uint32_t h = this->get_object_id_hash();
@@ -46,7 +46,7 @@ void DaikinS21Climate::setup() {
   this->set_custom_fan_mode(commanded.fan);
   this->preset = commanded.preset;
   // enable event driven updates
-  this->get_parent()->add_climate_callback(std::bind(&DaikinS21Climate::update_handler, this)); // enable update events from DaikinS21
+  this->get_parent()->climate_callback = std::bind(&DaikinS21Climate::update_handler, this); // enable update events from DaikinS21
   this->set_command_timeout(0);  // schedule an immediate update to capture the current state (change detection on update requires a "previous" state)
   this->disable_loop(); // wait for updates
 }

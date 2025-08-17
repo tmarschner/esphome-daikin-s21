@@ -11,7 +11,7 @@ namespace esphome::split_uart {
  * Wraps two underlying UARTs to allow reads and writes to be directed to different sub-components from a single interface.
  */
 class SplitUART : public uart::UARTComponent, public Component {
-public:
+ public:
   SplitUART(uart::UARTComponent *tx, uart::UARTComponent *rx) : tx(tx), rx(rx) {}
 
   // Component overrides
@@ -22,15 +22,15 @@ public:
 
   // UARTComponent overrides
 
-  void write_array(const uint8_t *data, size_t len) override {
+  void write_array(const uint8_t * const data, const size_t len) override {
     return this->tx->write_array(data, len);
   }
 
-  bool peek_byte(uint8_t *data) override {
+  bool peek_byte(uint8_t * const data) override {
     return this->rx->peek_byte(data);
   }
 
-  bool read_array(uint8_t *data, size_t len) override {
+  bool read_array(uint8_t * const data, const size_t len) override {
     return this->rx->read_array(data, len);
   }
 
@@ -42,7 +42,7 @@ public:
     return this->tx->flush();
   }
 
-  void load_settings(bool dump_config) override {
+  void load_settings(const bool dump_config) override {
     for (auto *uart : {this->tx, this->rx}) {
       // no support for different UART settings
       uart->set_baud_rate(this->get_baud_rate());
@@ -57,9 +57,7 @@ public:
     this->load_settings(true);
   }
 
-protected:
-  void check_logger_conflict() override {}  // checked by subcomponent
-
+ protected:
   uart::UARTComponent *tx{};
   uart::UARTComponent *rx{};
 };

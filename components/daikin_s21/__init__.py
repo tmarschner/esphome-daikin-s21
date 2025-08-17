@@ -6,12 +6,12 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import (
   CONF_ID,
-  CONF_UART_ID,
 )
 
 DEPENDENCIES = ["uart"]
 
 CONF_S21_ID = "s21_id"
+CONF_UART = "uart"
 CONF_DEBUG_COMMS = "debug_comms"
 CONF_DEBUG_PROTOCOL = "debug_protocol"
 
@@ -23,7 +23,7 @@ UARTComponent = uart_ns.class_("UARTComponent")
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(DaikinS21),
-        cv.Required(CONF_UART_ID): cv.use_id(UARTComponent),
+        cv.Required(CONF_UART): cv.use_id(UARTComponent),
         cv.Optional(CONF_DEBUG_COMMS, default=False): cv.boolean,
         cv.Optional(CONF_DEBUG_PROTOCOL, default=False): cv.boolean,
     }
@@ -36,7 +36,7 @@ S21_PARENT_SCHEMA = cv.Schema(
 )
 
 async def to_code(config):
-    uart = await cg.get_variable(config[CONF_UART_ID])
+    uart = await cg.get_variable(config[CONF_UART])
     var = cg.new_Pvariable(config[CONF_ID], uart)
     await cg.register_component(var, config)
     cg.add(var.set_debug_comms(config[CONF_DEBUG_COMMS]))

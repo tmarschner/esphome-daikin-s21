@@ -139,7 +139,7 @@ uart:
 
 # The parent UART communication hub platform.
 daikin_s21:
-  uart_id: s21_uart
+  uart: s21_uart
   # update_interval: 15s  # supports periodic polling instead of more responsive free run
 
 climate:
@@ -233,7 +233,7 @@ split_uart:
   rx_uart: s21_rx
 
 daikin_s21:
-  uart_id: split_uart_1
+  uart: split_uart_1
 ```
 
 Here's an example of a single UART using direct wiring (you can leave out the split_uart component import as well):
@@ -250,5 +250,5 @@ uart:
     baud_rate: 2400
 
 daikin_s21:
-  uart_id: s21_uart
+  uart: s21_uart
 ```

@@ -521,8 +521,12 @@ void DaikinS21::do_next_action() {
         this->active.preset = climate::CLIMATE_PRESET_NONE;
       }
       // signal there's fresh data
-      this->binary_sensor_callback_.call(this->unit_state, this->system_state);
-      this->climate_callback_.call();
+      if (this->binary_sensor_callback) {
+        this->binary_sensor_callback(this->unit_state, this->system_state);
+      }
+      if (this->climate_callback) {
+        this->climate_callback();
+      }
     }
     if ((now - last_state_dump_ms) > (60 * 1000)) {
       last_state_dump_ms = now;
@@ -1007,14 +1011,6 @@ climate::ClimateAction DaikinS21::resolve_climate_action() {
       break;
   }
   return this->action_reported;
-}
-
-void DaikinS21::add_climate_callback(std::function<void(void)> &&callback) {
-  this->climate_callback_.add(std::move(callback));
-}
-
-void DaikinS21::add_binary_sensor_callback(std::function<void(DaikinUnitState, DaikinSystemState)> &&callback) {
-  this->binary_sensor_callback_.add(std::move(callback));
 }
 
 } // namespace esphome::daikin_s21
