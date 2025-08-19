@@ -4,6 +4,7 @@
 #include "esphome/core/log.h"
 #include "daikin_s21_climate.h"
 #include "../daikin_s21_fan_modes.h"
+#include "../utils.h"
 
 using namespace esphome;
 
