@@ -30,7 +30,6 @@ class DaikinSerial : public Component,
 
   void set_debug(bool set) { this->debug = set; }
 
-  bool is_busy() const { return this->busy; }
   void send_frame(std::string_view cmd, std::span<const uint8_t> payload = {});
 
 protected:
@@ -56,7 +55,6 @@ protected:
 
   uart::UARTComponent &uart;
   bool debug{};
-  bool busy{};
   CommState comm_state{};
   std::vector<uint8_t> response{};
 };

@@ -93,10 +93,8 @@ class DaikinS21 : public PollingComponent {
   DaikinS21(DaikinSerial * const serial) : serial(*serial) {} // required in config, non-null
 
   void setup() override;
-  void loop() override;
   void update() override;
   void dump_config() override;
-
   void set_debug(bool set) { this->debug = set; }
 
   // external command action
@@ -120,15 +118,14 @@ class DaikinS21 : public PollingComponent {
   auto get_humidity() { return this->humidity; }
   auto get_demand() { return this->demand; }
 
+  // callbacks for serial events
   void handle_serial_result(DaikinSerial::Result result, std::span<const uint8_t> response = {});
+  void handle_serial_idle();
 
  protected:
   DaikinSerial &serial;
 
   void dump_state();
-  void refine_queries();
-  void do_next_action();
-  void parse_ack(std::span<const uint8_t> response);
 
   enum ReadyCommand : uint8_t {
     ReadyProtocolVersion,
@@ -144,12 +141,15 @@ class DaikinS21 : public PollingComponent {
     return this->get_update_interval() == 0;
   }
   void trigger_cycle();
+  void start_cycle();
   bool is_query_active(std::string_view query) const {
     return std::ranges::find(this->queries, query) != this->queries.end();
   }
-  bool prune_query(std::string_view query);
+  void prune_query(std::string_view query);
+  void refine_queries();
+  void parse_ack(std::span<const uint8_t> response);
   bool cycle_triggered{};
-  bool cycle_completed{};
+  bool cycle_active{};
   std::vector<std::string_view> queries{};
   std::vector<std::string_view>::iterator current_query{};
   std::string_view tx_command{};  // used when matching responses - backing value must have persistent lifetime across serial state machine runs
