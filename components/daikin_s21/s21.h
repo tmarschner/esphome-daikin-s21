@@ -93,6 +93,7 @@ class DaikinS21 : public PollingComponent {
   DaikinS21(DaikinSerial * const serial) : serial(*serial) {} // required in config, non-null
 
   void setup() override;
+  void loop() override;
   void update() override;
   void dump_config() override;
   void set_debug(bool set) { this->debug = set; }
@@ -128,36 +129,59 @@ class DaikinS21 : public PollingComponent {
   void dump_state();
 
   enum ReadyCommand : uint8_t {
-    ReadyProtocolVersion,
     ReadySensorReadout,
-    ReadyCapabilities,
     ReadyBasic,
     ReadyCount, // just for bitset sizing
   };
   std::bitset<ReadyCount> ready{};
 
   // communication state
-  bool is_free_run() const {
-    return this->get_update_interval() == 0;
-  }
+  bool is_free_run() const { return this->get_update_interval() == 0; }
   void trigger_cycle();
   void start_cycle();
-  bool is_query_active(std::string_view query) const {
-    return std::ranges::find(this->queries, query) != this->queries.end();
-  }
-  void prune_query(std::string_view query);
+  bool is_query_active(std::string_view query_str) const;
+  bool is_query_unsupported(std::string_view query_str) const;
+  const PayloadBuffer* get_static_query(std::string_view query_str) const;
+  void prune_query(std::string_view query_str);
   void refine_queries();
-  void parse_ack(std::span<const uint8_t> response);
+  void send_command(std::string_view command, std::span<const uint8_t> payload);
+
+  // query handlers
+  void handle_nop(std::span<const uint8_t> payload) {}
+  void handle_state_basic(std::span<const uint8_t> payload);
+  void handle_state_optional_features(std::span<const uint8_t> payload);
+  void handle_state_swing_or_humidity(std::span<const uint8_t> payload);
+  void handle_state_special_modes(std::span<const uint8_t> payload);
+  void handle_state_demand_and_econo(std::span<const uint8_t> payload);
+  void handle_state_inside_outside_temperature(std::span<const uint8_t> payload);
+  void handle_env_power_on_off(std::span<const uint8_t> payload);
+  void handle_env_indoor_unit_mode(std::span<const uint8_t> payload);
+  void handle_env_temperature_setpoint(std::span<const uint8_t> payload);
+  void handle_env_swing_mode(std::span<const uint8_t> payload);
+  void handle_env_fan_mode(std::span<const uint8_t> payload);
+  void handle_env_inside_temperature(std::span<const uint8_t> payload);
+  void handle_env_liquid_temperature(std::span<const uint8_t> payload);
+  void handle_env_fan_speed(std::span<const uint8_t> payload);
+  void handle_env_vertical_swing_angle(std::span<const uint8_t> payload);
+  void handle_env_target_temperature(std::span<const uint8_t> payload);
+  void handle_env_outside_temperature(std::span<const uint8_t> payload);
+  void handle_env_indoor_frequency_command_signal(std::span<const uint8_t> payload);
+  void handle_env_compressor_frequency(std::span<const uint8_t> payload);
+  void handle_env_indoor_humidity(std::span<const uint8_t> payload);
+  void handle_env_unit_state(std::span<const uint8_t> payload);
+  void handle_env_system_state(std::span<const uint8_t> payload);
+
+  bool comms_detected{};
   bool cycle_triggered{};
   bool cycle_active{};
-  std::vector<std::string_view> queries{};
-  std::vector<std::string_view>::iterator current_query{};
-  std::string_view tx_command{};  // used when matching responses - backing value must have persistent lifetime across serial state machine runs
+  std::vector<DaikinQueryState> queries{};
+  std::vector<std::string_view> failed_queries{};
+  decltype(queries)::iterator current_query{};
+  std::string_view current_command{}; // used when matching responses - backing value must have persistent lifetime across serial state machine runs
+  std::vector<DaikinQueryValue> static_queries{};
 
   // debugging support
   bool debug{};
-  std::unordered_map<std::string, std::vector<uint8_t>> val_cache{};
-  std::vector<std::string_view> nak_queries{};
   uint32_t last_state_dump_ms{};
   uint32_t cycle_time_start_ms{};
   uint32_t cycle_time_ms{};
@@ -197,15 +221,10 @@ class DaikinS21 : public PollingComponent {
 
   // protocol support
   bool determine_protocol_version();
-  struct DetectResponses {
-    std::array<uint8_t,4> G8{};
-    std::array<uint8_t,4> GC{};
-    uint16_t GY00{};
-    std::array<uint8_t,4> M{};
-    std::array<uint8_t,4> V{};
-    char G2_model_info{};
-  } detect_responses;
   ProtocolVersion protocol_version{ProtocolUndetected};
+  char G2_model_info{};
+  bool support_inside_temperature{};
+  bool support_outside_temperature{};
   bool support_swing{};
   bool support_horizontal_swing{};
   bool support_humidity{};
