@@ -51,6 +51,7 @@ void DaikinS21Climate::setup() {
   this->set_command_timeout(0);  // schedule an immediate update to capture the current state (change detection on update requires a "previous" state)
   this->disable_loop(); // wait for updates
 }
+
 /**
  * Command timeout handler
  *
@@ -118,7 +119,7 @@ void DaikinS21Climate::update_handler() {
       } else if (unexpected_diff >= SETPOINT_STEP) {
         // User probably set temp via IR remote -- so try to honor their wish by
         // matching controller's target value to what they sent via remote.
-        ESP_LOGI(TAG, "S21 setpoint changed outside controller, updating target temp (expected %.1f, found %.1f)",
+        ESP_LOGI(TAG, "Setpoint changed outside controller, updating target temp (expected %.1f, found %.1f)",
             this->commanded.setpoint.f_degc(), reported.setpoint.f_degc());
         this->target_temperature = reported.setpoint.f_degc();
         this->set_s21_climate();
@@ -126,7 +127,7 @@ void DaikinS21Climate::update_handler() {
         // Room temperature offset has probably changed, so we need to adjust
         // the s21 setpoint based on the new difference.
         this->set_s21_climate();
-        ESP_LOGI(TAG, "S21 setpoint updated to %.1f", this->commanded.setpoint.f_degc());
+        ESP_LOGI(TAG, "Setpoint updated to %.1f", this->commanded.setpoint.f_degc());
       }
     }
 

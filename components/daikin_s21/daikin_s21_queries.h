@@ -72,7 +72,7 @@ namespace EnvironmentQuery {
   inline constexpr std::string_view TemperatureSetPoint{"RC"};
   inline constexpr std::string_view OnTimerSetting{"RD"};
   inline constexpr std::string_view OffTimerSetting{"RE"};
-  // RF
+  inline constexpr std::string_view SwingMode{"RF"};
   inline constexpr std::string_view FanMode{"RG"};
   inline constexpr std::string_view InsideTemperature{"RH"};
   inline constexpr std::string_view LiquidTemperature{"RI"};

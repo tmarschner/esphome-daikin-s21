@@ -212,6 +212,7 @@ void DaikinSerial::set_rx_timeout() {
 void DaikinSerial::rx_timeout_handler() {
   this->disable_loop();
   this->get_parent()->handle_serial_result(Result::Timeout);
+  this->set_busy_timeout(DaikinSerial::rx_timout_period_ms);  // 2x rx_timout_period_ms in total before retry
 }
 
 } // namespace esphome::daikin_s21
