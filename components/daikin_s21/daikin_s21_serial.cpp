@@ -22,7 +22,6 @@ void DaikinSerial::setup() {
   this->uart.set_parity(uart::UART_CONFIG_PARITY_EVEN);
   this->uart.load_settings();
   // start idle, wait for updates
-  this->busy = false;
   this->disable_loop();
 }
 
@@ -135,11 +134,6 @@ void DaikinSerial::loop() {
 }
 
 void DaikinSerial::send_frame(const std::string_view cmd, const std::span<const uint8_t> payload /*= {}*/) {
-  if (this->busy) {
-    return;
-  }
-  this->busy = true;
-
   if (cmd.size() > S21_MAX_COMMAND_SIZE) {
     ESP_LOGE(TAG, "Tx: Command '%" PRI_SV "' too large", PRI_SV_ARGS(cmd));
     this->get_parent()->handle_serial_result(Result::Error);
@@ -208,7 +202,7 @@ void DaikinSerial::set_busy_timeout(const uint32_t delay_ms) {
 }
 
 void DaikinSerial::busy_timeout_handler() {
-  this->busy = false;
+  this->get_parent()->handle_serial_idle();
 }
 
 void DaikinSerial::set_rx_timeout() {
@@ -216,9 +210,9 @@ void DaikinSerial::set_rx_timeout() {
 }
 
 void DaikinSerial::rx_timeout_handler() {
-  this->busy = false;
   this->disable_loop();
   this->get_parent()->handle_serial_result(Result::Timeout);
+  this->set_busy_timeout(DaikinSerial::rx_timout_period_ms);  // 2x rx_timout_period_ms in total before retry
 }
 
 } // namespace esphome::daikin_s21

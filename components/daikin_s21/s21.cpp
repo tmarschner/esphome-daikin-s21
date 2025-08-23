@@ -124,28 +124,138 @@ int16_t bytes_to_num(std::span<const uint8_t> bytes) {
   return val;
 }
 
+void DaikinS21::setup() {
+  // populate initial messages to poll
+  // clang-format off
+  queries = {
+      // Protocol version detect
+      StateQuery::OldProtocol,
+      StateQuery::NewProtocol,
+      StateQuery::ModelCode,
+      MiscQuery::Model,
+      MiscQuery::Version,
+      // Basic sensor support
+      StateQuery::InsideOutsideTemperatures,
+      EnvironmentQuery::InsideTemperature,
+      EnvironmentQuery::LiquidTemperature,
+      EnvironmentQuery::FanSpeed,
+      EnvironmentQuery::OutsideTemperature,
+      // Standard
+      StateQuery::Basic,
+      StateQuery::OptionalFeatures,
+      StateQuery::SwingOrHumidity,
+      StateQuery::SpecialModes,
+      StateQuery::DemandAndEcono,
+      EnvironmentQuery::FanMode,
+      EnvironmentQuery::TargetTemperature,
+      EnvironmentQuery::IndoorFrequencyCommandSignal,
+      EnvironmentQuery::CompressorFrequency,
+      // State
+      EnvironmentQuery::UnitState,
+      EnvironmentQuery::SystemState,
+      // Redundant
+      // EnvironmentQuery::PowerOnOff,
+      // EnvironmentQuery::IndoorUnitMode,
+      // EnvironmentQuery::TemperatureSetPoint,
+      // Unused
+      // StateQuery::OnOffTimer,  // use home assistant for scheduling
+      // Not handled yet
+      // StateQuery::ErrorStatus,
+      // StateQuery::FanSetPoint,
+      // StateQuery::LouvreAngleSetPoint,
+  };
+  // clang-format on
+  this->disable_loop();
+}
+
+/**
+ * PollingComponent update loop.
+ *
+ * Disable the polling loop (this function) if configured to free run.
+ * It executes once on startup
+ *
+ * Trigger a cycle.
+ */
+void DaikinS21::update() {
+  if (this->is_free_run()) {
+    this->stop_poller();
+  }
+  this->trigger_cycle();
+}
+
 void DaikinS21::dump_config() {
   ESP_LOGCONFIG(TAG, "DaikinS21:");
   ESP_LOGCONFIG(TAG, "  Update interval: %" PRIu32, this->get_update_interval());
 }
 
+void DaikinS21::set_climate_settings(const DaikinSettings &settings) {
+  if ((pending.mode != settings.mode) ||
+      (pending.setpoint != settings.setpoint) ||
+      (pending.fan != settings.fan)) {
+
+    // If this is the first time settings are being applied, we need to force
+    // all of them to be applied to the unit so our state will be in sync with
+    // the unit and thus rely on this change detection to work in the future.
+    // The pending settings mode has been initialized in the object constructor
+    // to the unsupported (by this project) CLIMATE_MODE_AUTO in order to detect
+    // this one time condition here.
+    if (pending.mode == climate::CLIMATE_MODE_AUTO) {
+      activate_swing_mode = true;
+      activate_preset = true;
+    }
+
+    activate_climate = true;
+    this->trigger_cycle();
+  }
+
+  if (pending.swing != settings.swing) {
+    activate_swing_mode = true;
+    this->trigger_cycle();
+  }
+
+  if (pending.preset != settings.preset) {
+    activate_preset = true;
+    this->trigger_cycle();
+  }
+
+  pending = settings;
+}
+
 /**
  * Trigger a query cycle
  *
- * Set a flag and reenable the service loop to handle it.
+ * If not active, kick off a cycle.
+ * If already active, set a flag to run another when it finishes.
  */
 void DaikinS21::trigger_cycle() {
-  cycle_triggered = true;
-  this->enable_loop();
+  if (this->cycle_active == false) {
+    start_cycle();
+  } else {
+    this->cycle_triggered = true;
+  }
 }
 
-bool DaikinS21::prune_query(std::string_view query) {
+/**
+ * Start a query cycle, tramsitting the first.
+ */
+void DaikinS21::start_cycle() {
+  this->cycle_active = true;
+  this->cycle_triggered = this->is_free_run();
+  this->cycle_time_start_ms = millis();
+  this->current_query = queries.begin();
+  this->tx_command = *(this->current_query);
+  this->serial.send_frame(this->tx_command);
+}
+
+/**
+ * Remove a query from the active pool.
+ *
+ * @note Does not rewrite the query iterator. Should only be called at the end of a query cycle.
+ */
+void DaikinS21::prune_query(std::string_view query) {
   const auto it = std::ranges::find(this->queries, query);
   if (it != this->queries.end()) {
     this->queries.erase(it);
-    return true;
-  } else {
-    return false;
   }
 }
 
@@ -198,7 +308,7 @@ void DaikinS21::refine_queries() {
  * - Process and report the results if the cycle was just completed
  * - Start the next cycle if free running or triggered in polling mode
  */
-void DaikinS21::do_next_action() {
+void DaikinS21::handle_serial_idle() {
   std::array<uint8_t, DaikinSerial::S21_PAYLOAD_SIZE> payload;
 
   // Apply any pending settings
@@ -272,49 +382,37 @@ void DaikinS21::do_next_action() {
 
   // Query cycle complete
   const auto now = millis();
-
-  // Are there fresh results to process?
-  if (this->cycle_completed) {
-    this->cycle_completed = false;
-    this->cycle_time_ms = now - this->cycle_time_start_ms;
-    if (this->ready.all()) {
-      this->action_resolved = resolve_climate_action();
-      if (this->modifiers[ModifierPowerful]) {
-        this->active.preset = climate::CLIMATE_PRESET_BOOST;
-      } else if (this->modifiers[ModifierEcono]) {
-        this->active.preset = climate::CLIMATE_PRESET_ECO;
-      } else {
-        this->active.preset = climate::CLIMATE_PRESET_NONE;
-      }
-      // signal there's fresh data
-      if (this->binary_sensor_callback) {
-        this->binary_sensor_callback(this->unit_state, this->system_state);
-      }
-      if (this->climate_callback) {
-        this->climate_callback();
-      }
-    }
-    if ((now - last_state_dump_ms) > (60 * 1000)) {
-      last_state_dump_ms = now;
-      this->dump_state();
-    }
-  }
-
-  // Handle polled execution state
-  if (this->is_free_run() == false) {
-    if (this->cycle_triggered == false) {
-      this->disable_loop(); // single cycle now complete, disable this state machine and wait for the next poll to start it again
-      return;
-    }
-    this->cycle_triggered = false;  // single cycle triggered, kick it off below
-  }
-
-  // Start fresh polling query cycle
-  this->cycle_time_start_ms = now;
+  this->cycle_active = false;
   this->refine_queries();
-  this->current_query = queries.begin();
-  this->tx_command = *(this->current_query);
-  this->serial.send_frame(this->tx_command);
+  this->cycle_time_ms = now - this->cycle_time_start_ms;
+  if (this->ready.all()) {
+    this->action_resolved = resolve_climate_action();
+    if (this->modifiers[ModifierPowerful]) {
+      this->active.preset = climate::CLIMATE_PRESET_BOOST;
+    } else if (this->modifiers[ModifierEcono]) {
+      this->active.preset = climate::CLIMATE_PRESET_ECO;
+    } else {
+      this->active.preset = climate::CLIMATE_PRESET_NONE;
+    }
+
+    // signal there's fresh data
+    if (this->binary_sensor_callback) {
+      this->binary_sensor_callback(this->unit_state, this->system_state);
+    }
+    if (this->climate_callback) {
+      this->climate_callback();
+    }
+  }
+
+  if ((now - last_state_dump_ms) > (60 * 1000)) {
+    last_state_dump_ms = now;
+    this->dump_state();
+  }
+
+  // Start fresh polling query cycle (triggered never cleared in free run)
+  if (this->cycle_triggered) {
+    this->start_cycle();
+  }
 }
 
 static DaikinC10 temp_bytes_to_c10(std::span<const uint8_t> bytes) { return bytes_to_num(bytes); }
@@ -326,7 +424,7 @@ void DaikinS21::parse_ack(const std::span<const uint8_t> response) {
   std::span<const uint8_t> rcode{};
   std::span<const uint8_t> payload{};
 
-  ESP_LOGV(TAG, "Rx: ACK from S21 for command %" PRI_SV, PRI_SV_ARGS(this->tx_command));
+  ESP_LOGV(TAG, "ACK from S21 for %" PRI_SV, PRI_SV_ARGS(this->tx_command));
 
   // prepare response buffers for decoding
   if (response.empty()) {
@@ -335,16 +433,10 @@ void DaikinS21::parse_ack(const std::span<const uint8_t> response) {
   } else {
     rcode = { response.begin(), this->tx_command.size() };
     payload = { response.begin() + rcode.size(), response.end() };
-    // query response reveived, move to the next one or flag if it was the last
-    // pushing along the state machine in here lets us easily interleve commands in a cycle
-    this->current_query++;
-    if (this->current_query == this->queries.end()) {
-      this->cycle_completed = true;
-    }
   }
 
   switch (rcode[0]) {
-    case 'D':  // D -> D (fake response, see above)
+    case 'D':  // D -> D (command fake response, see above)
       switch (rcode[1]) {
         case '1': break; // climate setting applied
         case '5': break; // swing settings applied
@@ -566,76 +658,25 @@ bool DaikinS21::determine_protocol_version() {
   return false; // not detected yet or unsupported
 }
 
-void DaikinS21::setup() {
-  // populate initial messages to poll
-  // clang-format off
-  queries = {
-      // Protocol version detect
-      StateQuery::OldProtocol,
-      StateQuery::NewProtocol,
-      StateQuery::ModelCode,
-      MiscQuery::Model,
-      MiscQuery::Version,
-      // Basic sensor support
-      StateQuery::InsideOutsideTemperatures,
-      EnvironmentQuery::InsideTemperature,
-      EnvironmentQuery::LiquidTemperature,
-      EnvironmentQuery::FanSpeed,
-      EnvironmentQuery::OutsideTemperature,
-      // Standard
-      StateQuery::Basic,
-      StateQuery::OptionalFeatures,
-      StateQuery::SwingOrHumidity,
-      StateQuery::SpecialModes,
-      StateQuery::DemandAndEcono,
-      EnvironmentQuery::FanMode,
-      EnvironmentQuery::TargetTemperature,
-      EnvironmentQuery::IndoorFrequencyCommandSignal,
-      EnvironmentQuery::CompressorFrequency,
-      // State
-      EnvironmentQuery::UnitState,
-      EnvironmentQuery::SystemState,
-      // Redundant
-      // EnvironmentQuery::PowerOnOff,
-      // EnvironmentQuery::IndoorUnitMode,
-      // EnvironmentQuery::TemperatureSetPoint,
-      // Unused
-      // StateQuery::OnOffTimer,  // use home assistant for scheduling
-      // Not handled yet
-      // StateQuery::ErrorStatus,
-      // StateQuery::FanSetPoint,
-      // StateQuery::LouvreAngleSetPoint,
-  };
-  // clang-format on
-  current_query = this->queries.begin();
-}
-
-void DaikinS21::loop() {
-  if (this->serial.is_busy()) {
-    return;
-  }
-
-  this->do_next_action();
-}
-
 void DaikinS21::handle_serial_result(const DaikinSerial::Result result, const std::span<const uint8_t> response /*= {}*/) {
   switch (result) {
     case DaikinSerial::Result::Ack:
       this->parse_ack(response);
+      if (this->tx_command == *(this->current_query)) {
+        this->current_query++;
+      }
       break;
 
     case DaikinSerial::Result::Nak:
-      ESP_LOGW(TAG, "Rx: NAK from S21 for %" PRI_SV, PRI_SV_ARGS(this->tx_command));
       if (this->tx_command == *(this->current_query)) {
-        ESP_LOGW(TAG, "Removing %" PRI_SV " from query pool (assuming unsupported)", PRI_SV_ARGS(this->tx_command));
+        ESP_LOGW(TAG, "NAK for %" PRI_SV ", removing from query pool as unsupported", PRI_SV_ARGS(this->tx_command));
         this->nak_queries.emplace_back(*(this->current_query));
         // current_query iterator will be invalidated, recover index and recreate
         const auto index = std::distance(this->queries.begin(), this->current_query);
         this->queries.erase(this->current_query);
         this->current_query = this->queries.begin() + index;
       } else {
-        ESP_LOGW(TAG, "Acknowledging %" PRI_SV " command despite NAK", PRI_SV_ARGS(this->tx_command));
-        this->parse_ack(response);  // don't get stuck retrying unsupported command
+        ESP_LOGW(TAG, "NAK for %" PRI_SV " command", PRI_SV_ARGS(this->tx_command));
       }
       break;
 
@@ -644,28 +685,14 @@ void DaikinS21::handle_serial_result(const DaikinSerial::Result result, const st
       break;
 
     case DaikinSerial::Result::Error:
-      this->cycle_completed = true;
       this->activate_climate = false;
       this->activate_swing_mode = false;
       this->activate_preset = false;
+      this->start_cycle();
       break;
 
     default:
       break;
-  }
-}
-
-/**
- * PollingComponent update loop.
- *
- * Disable the polling loop (this function) if configured to free run.
- * Trigger a cycle if configured for periodic polling.
- */
-void DaikinS21::update() {
-  if (this->is_free_run()) {
-    this->stop_poller();
-  } else {
-    this->trigger_cycle();
   }
 }
 
@@ -718,39 +745,6 @@ void DaikinS21::dump_state() {
   }
 
   ESP_LOGD(TAG, "** END STATE *****************************");
-}
-
-void DaikinS21::set_climate_settings(const DaikinSettings &settings) {
-  if ((pending.mode != settings.mode) ||
-      (pending.setpoint != settings.setpoint) ||
-      (pending.fan != settings.fan)) {
-
-    // If this is the first time settings are being applied, we need to force
-    // all of them to be applied to the unit so our state will be in sync with
-    // the unit and thus rely on this change detection to work in the future.
-    // The pending settings mode has been initialized in the object constructor
-    // to the unsupported (by this project) CLIMATE_MODE_AUTO in order to detect
-    // this one time condition here.
-    if (pending.mode == climate::CLIMATE_MODE_AUTO) {
-      activate_swing_mode = true;
-      activate_preset = true;
-    }
-
-    activate_climate = true;
-    this->trigger_cycle();
-  }
-
-  if (pending.swing != settings.swing) {
-    activate_swing_mode = true;
-    this->trigger_cycle();
-  }
-
-  if (pending.preset != settings.preset) {
-    activate_preset = true;
-    this->trigger_cycle();
-  }
-
-  pending = settings;
 }
 
 climate::ClimateAction DaikinS21::resolve_climate_action() {
