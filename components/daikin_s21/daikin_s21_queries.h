@@ -1,8 +1,43 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
+#include <functional>
 #include <string_view>
+#include <span>
+#include "daikin_s21_serial.h"
 
 namespace esphome::daikin_s21 {
+
+class DaikinS21;
+
+using PayloadBuffer = std::array<uint8_t, DaikinSerial::S21_PAYLOAD_SIZE>;
+
+class DaikinQueryValue {
+ public:
+  DaikinQueryValue() {}
+  DaikinQueryValue(const std::string_view command) : command(command) {}
+
+  std::string_view command{};
+  PayloadBuffer value{};  // last received value
+
+  // command fetching projection for std::ranges use
+  static constexpr std::string_view GetCommand(const DaikinQueryValue &query) { return query.command; }
+};
+
+class DaikinQueryState : public DaikinQueryValue {
+  using handler_fn = void (DaikinS21::*)(std::span<const uint8_t>);
+
+ public:
+  DaikinQueryState() {}
+  DaikinQueryState(const std::string_view command, const handler_fn handler = nullptr, const bool is_static = false)
+      : DaikinQueryValue(command), handler(handler), is_static(is_static) {}
+
+  handler_fn handler{};
+  bool is_static{}; // result never changes
+  bool acked{};
+  uint8_t naks{};
+};
 
 namespace StateQuery {
   inline constexpr std::string_view Basic{"F1"};
