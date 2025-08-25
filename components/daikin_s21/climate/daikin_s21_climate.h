@@ -37,7 +37,7 @@ class DaikinS21Climate : public climate::Climate,
   uint32_t last_setpoint_check_ms{millis()};
 
   bool command_active{};  // ESPHome could use a is_timeout_active()...
-  DaikinSettings commanded{};
+  DaikinClimateSettings commanded{};
 
   ESPPreferenceObject auto_setpoint_pref;
   ESPPreferenceObject cool_setpoint_pref;

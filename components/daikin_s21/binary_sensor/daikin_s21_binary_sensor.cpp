@@ -31,7 +31,7 @@ void DaikinS21BinarySensor::update_handler(const DaikinUnitState unit, const Dai
   if (this->system_defrost_sensor_ != nullptr) {
     this->system_defrost_sensor_->publish_state(system.defrost());
   }
-    if (this->multizone_conflict_sensor_ != nullptr) {
+  if (this->multizone_conflict_sensor_ != nullptr) {
     this->multizone_conflict_sensor_->publish_state(!system.multizone_conflict()); // invert for Home Assistant locked/unlocked logic
   }
 }

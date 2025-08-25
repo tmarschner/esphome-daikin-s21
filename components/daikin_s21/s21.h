@@ -78,14 +78,14 @@ class DaikinSystemState {
   uint8_t raw{};
 };
 
-struct DaikinSettings {
+struct DaikinClimateSettings {
   climate::ClimateMode mode{climate::CLIMATE_MODE_OFF};
   DaikinC10 setpoint{23};
   climate::ClimateSwingMode swing{climate::CLIMATE_SWING_OFF};
   DaikinFanMode fan{DaikinFanMode::Auto};
   climate::ClimatePreset preset{climate::CLIMATE_PRESET_NONE};
 
-  constexpr bool operator==(const DaikinSettings &other) const = default;
+  constexpr bool operator==(const DaikinClimateSettings &other) const = default;
 };
 
 class DaikinS21 : public PollingComponent {
@@ -99,22 +99,24 @@ class DaikinS21 : public PollingComponent {
   void set_debug(bool set) { this->debug = set; }
 
   // external command action
-  void set_climate_settings(const DaikinSettings &settings);
+  void set_climate_settings(const DaikinClimateSettings &settings);
 
-  std::function<void(void)> climate_callback{};
   std::function<void(DaikinUnitState, DaikinSystemState)> binary_sensor_callback{};
+  std::function<void(void)> climate_callback{};
 
   // value accessors
   bool is_ready() { return this->ready.all(); }
-  const DaikinSettings& get_climate_settings() { return this->active; };
-  climate::ClimateMode get_climate_mode() { return this->active.mode; }
-  climate::ClimateAction get_climate_action() { return this->action_resolved; }
-  auto get_setpoint() { return this->active.setpoint.f_degc(); }
+  const DaikinClimateSettings& get_climate_settings() { return this->current.climate; };
+  climate::ClimateMode get_climate_mode() { return this->current.climate.mode; }
+  climate::ClimateAction get_climate_action() { return this->current.action; }
+  auto get_setpoint() { return this->current.climate.setpoint.f_degc(); }
   auto get_temp_inside() { return this->temp_inside.f_degc(); }
   auto get_temp_outside() { return this->temp_outside.f_degc(); }
   auto get_temp_coil() { return this->temp_coil.f_degc(); }
-  auto get_fan_rpm() { return this->fan_rpm; }
-  auto get_swing_vertical_angle() { return this->swing_vertical_angle; }
+  auto get_fan_rpm_setpoint() { return this->current.fan_rpm_setpoint; }
+  auto get_fan_rpm() { return this->current.fan_rpm; }
+  auto get_swing_vertical_angle_setpoint() { return this->current.swing_vertical_angle_setpoint; }
+  auto get_swing_vertical_angle() { return this->current.swing_vertical_angle; }
   auto get_compressor_frequency() { return this->compressor_hz; }
   auto get_humidity() { return this->humidity; }
   auto get_demand() { return this->demand; }
@@ -161,7 +163,9 @@ class DaikinS21 : public PollingComponent {
   void handle_env_fan_mode(std::span<const uint8_t> payload);
   void handle_env_inside_temperature(std::span<const uint8_t> payload);
   void handle_env_liquid_temperature(std::span<const uint8_t> payload);
+  void handle_env_fan_speed_setpoint(std::span<const uint8_t> payload);
   void handle_env_fan_speed(std::span<const uint8_t> payload);
+  void handle_env_vertical_swing_angle_setpoint(std::span<const uint8_t> payload);
   void handle_env_vertical_swing_angle(std::span<const uint8_t> payload);
   void handle_env_target_temperature(std::span<const uint8_t> payload);
   void handle_env_outside_temperature(std::span<const uint8_t> payload);
@@ -187,21 +191,28 @@ class DaikinS21 : public PollingComponent {
   uint32_t cycle_time_ms{};
 
   // settings
-  DaikinSettings active{};
-  DaikinSettings pending{ .mode = climate::CLIMATE_MODE_AUTO }; // unsupported sentinel value, see set_climate_settings
-  bool activate_climate{};
-  bool activate_swing_mode{};
-  bool activate_preset{};
+  struct {
+    DaikinClimateSettings climate{};
+    climate::ClimateAction action_reported = climate::CLIMATE_ACTION_OFF; // raw readout
+    climate::ClimateAction action = climate::CLIMATE_ACTION_OFF; // corrected at end of cycle
+    uint16_t fan_rpm_setpoint{};
+    uint16_t fan_rpm{};
+    int16_t swing_vertical_angle_setpoint{};
+    int16_t swing_vertical_angle{};
+  } current;
+
+  struct {
+    DaikinClimateSettings climate{ .mode = climate::CLIMATE_MODE_AUTO }; // unsupported sentinel value, see set_climate_settings
+    bool activate_climate{};
+    bool activate_swing_mode{};
+    bool activate_preset{};
+  } pending{};
 
   // current values
-  climate::ClimateAction action_reported = climate::CLIMATE_ACTION_OFF; // raw readout
-  climate::ClimateAction action_resolved = climate::CLIMATE_ACTION_OFF; // corrected at end of cycle
   DaikinC10 temp_inside{};
   DaikinC10 temp_target{};
   DaikinC10 temp_outside{};
   DaikinC10 temp_coil{};
-  uint16_t fan_rpm{};
-  int16_t swing_vertical_angle{};
   uint8_t compressor_hz{};
   uint8_t humidity{50};
   uint8_t demand{};
@@ -223,14 +234,13 @@ class DaikinS21 : public PollingComponent {
   bool determine_protocol_version();
   ProtocolVersion protocol_version{ProtocolUndetected};
   char G2_model_info{};
-  bool support_inside_temperature{};
-  bool support_outside_temperature{};
-  bool support_swing{};
-  bool support_horizontal_swing{};
-  bool support_humidity{};
-
-  // helpers
-  climate::ClimateAction resolve_climate_action();
+  struct {
+    bool inside_temperature{};
+    bool outside_temperature{};
+    bool swing{};
+    bool horizontal_swing{};
+    bool humidity{};
+  } support;
 };
 
 } // namespace esphome::daikin_s21

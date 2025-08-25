@@ -1,5 +1,5 @@
 """
-Daikin S21 Mini-Split ESPHome component config validation & code generation.
+Daikin S21 Mini-Split ESPHome climate component config validation & code generation.
 """
 
 import esphome.codegen as cg
