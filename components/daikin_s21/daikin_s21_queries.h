@@ -104,16 +104,16 @@ namespace StateQuery {
 namespace EnvironmentQuery {
   inline constexpr std::string_view PowerOnOff{"RA"};
   inline constexpr std::string_view IndoorUnitMode{"RB"};
-  inline constexpr std::string_view TemperatureSetPoint{"RC"};
+  inline constexpr std::string_view TemperatureSetpoint{"RC"};
   inline constexpr std::string_view OnTimerSetting{"RD"};
   inline constexpr std::string_view OffTimerSetting{"RE"};
   inline constexpr std::string_view SwingMode{"RF"};
   inline constexpr std::string_view FanMode{"RG"};
   inline constexpr std::string_view InsideTemperature{"RH"};
   inline constexpr std::string_view LiquidTemperature{"RI"};
-  inline constexpr std::string_view FanSetPoint{"RK"};
+  inline constexpr std::string_view FanSpeedSetpoint{"RK"};
   inline constexpr std::string_view FanSpeed{"RL"};
-  inline constexpr std::string_view LouvreAngleSetPoint{"RM"};
+  inline constexpr std::string_view LouvreAngleSetpoint{"RM"};
   inline constexpr std::string_view VerticalSwingAngle{"RN"};
   // RW
   inline constexpr std::string_view TargetTemperature{"RX"}; // (not set point, see details)
@@ -137,12 +137,12 @@ namespace StateCommand {
   inline constexpr std::string_view PowerModeTempFan{"D1"};
   // D2
   inline constexpr std::string_view OnOffTimer{"D3"};
-  inline constexpr std::string_view LouvreSwing{"D5"};
+  inline constexpr std::string_view LouvreSwingMode{"D5"};
   inline constexpr std::string_view Powerful{"D6"};
   inline constexpr std::string_view Econo{"D7"};
   // DH
   // DJ
-  // DR
+  inline constexpr std::string_view LouvreAngleSetpoint{"DR"};
 }
 
 } // namespace esphome::daikin_s21
