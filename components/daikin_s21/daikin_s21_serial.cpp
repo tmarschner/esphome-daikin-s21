@@ -110,7 +110,7 @@ void DaikinSerial::loop() {
 
           default:  // not the end, add to buffer
             this->response.push_back(byte);
-            if (this->response.size() > (S21_MAX_COMMAND_SIZE + S21_PAYLOAD_SIZE + 1)) {  // +1 for checksum byte
+            if (this->response.size() > MAX_RESPONSE_SIZE) {
               ESP_LOGW(TAG, "Rx ETX: Overflow %s %s + 0x%02" PRIX8,
                 str_repr(this->response).c_str(), hex_repr(this->response).c_str(), byte);
               this->set_busy_timeout(DaikinSerial::error_delay_period_ms);
@@ -134,7 +134,7 @@ void DaikinSerial::loop() {
 }
 
 void DaikinSerial::send_frame(const std::string_view cmd, const std::span<const uint8_t> payload /*= {}*/) {
-  if (cmd.size() > S21_MAX_COMMAND_SIZE) {
+  if (cmd.size() > MAX_COMMAND_SIZE) {
     ESP_LOGE(TAG, "Tx: Command '%" PRI_SV "' too large", PRI_SV_ARGS(cmd));
     this->get_parent()->handle_serial_result(Result::Error);
     this->set_busy_timeout(DaikinSerial::error_delay_period_ms);  // prevent spam by blocking for a while

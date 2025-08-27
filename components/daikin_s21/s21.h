@@ -4,6 +4,7 @@
 #include <compare>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -117,12 +118,14 @@ class DaikinS21 : public PollingComponent {
   auto get_fan_rpm() { return this->current.fan_rpm; }
   auto get_swing_vertical_angle_setpoint() { return this->current.swing_vertical_angle_setpoint; }
   auto get_swing_vertical_angle() { return this->current.swing_vertical_angle; }
+  auto get_ir_counter() { return this->current.ir_counter; }
+  auto get_power_consumption() { return this->current.power_consumption; }
   auto get_compressor_frequency() { return this->compressor_hz; }
   auto get_humidity() { return this->humidity; }
   auto get_demand() { return this->demand; }
 
   // callbacks for serial events
-  void handle_serial_result(DaikinSerial::Result result, std::span<const uint8_t> response = {});
+  void handle_serial_result(DaikinSerial::Result result, std::span<uint8_t> response = {});
   void handle_serial_idle();
 
  protected:
@@ -131,8 +134,9 @@ class DaikinS21 : public PollingComponent {
   void dump_state();
 
   enum ReadyCommand : uint8_t {
-    ReadySensorReadout,
     ReadyBasic,
+    ReadyOptionalFeatures,
+    ReadySensorReadout,
     ReadyCount, // just for bitset sizing
   };
   std::bitset<ReadyCount> ready{};
@@ -143,46 +147,48 @@ class DaikinS21 : public PollingComponent {
   void start_cycle();
   bool is_query_active(std::string_view query_str) const;
   bool is_query_unsupported(std::string_view query_str) const;
-  const PayloadBuffer* get_static_query(std::string_view query_str) const;
+  std::optional<std::span<const uint8_t>> get_static_query(std::string_view query_str) const;
   void prune_query(std::string_view query_str);
   void refine_queries();
   void send_command(std::string_view command, std::span<const uint8_t> payload);
-
-  // query handlers
-  void handle_nop(std::span<const uint8_t> payload) {}
-  void handle_state_basic(std::span<const uint8_t> payload);
-  void handle_state_optional_features(std::span<const uint8_t> payload);
-  void handle_state_swing_or_humidity(std::span<const uint8_t> payload);
-  void handle_state_special_modes(std::span<const uint8_t> payload);
-  void handle_state_demand_and_econo(std::span<const uint8_t> payload);
-  void handle_state_inside_outside_temperature(std::span<const uint8_t> payload);
-  void handle_env_power_on_off(std::span<const uint8_t> payload);
-  void handle_env_indoor_unit_mode(std::span<const uint8_t> payload);
-  void handle_env_temperature_setpoint(std::span<const uint8_t> payload);
-  void handle_env_swing_mode(std::span<const uint8_t> payload);
-  void handle_env_fan_mode(std::span<const uint8_t> payload);
-  void handle_env_inside_temperature(std::span<const uint8_t> payload);
-  void handle_env_liquid_temperature(std::span<const uint8_t> payload);
-  void handle_env_fan_speed_setpoint(std::span<const uint8_t> payload);
-  void handle_env_fan_speed(std::span<const uint8_t> payload);
-  void handle_env_vertical_swing_angle_setpoint(std::span<const uint8_t> payload);
-  void handle_env_vertical_swing_angle(std::span<const uint8_t> payload);
-  void handle_env_target_temperature(std::span<const uint8_t> payload);
-  void handle_env_outside_temperature(std::span<const uint8_t> payload);
-  void handle_env_indoor_frequency_command_signal(std::span<const uint8_t> payload);
-  void handle_env_compressor_frequency(std::span<const uint8_t> payload);
-  void handle_env_indoor_humidity(std::span<const uint8_t> payload);
-  void handle_env_unit_state(std::span<const uint8_t> payload);
-  void handle_env_system_state(std::span<const uint8_t> payload);
-
-  bool comms_detected{};
+  bool comms_detected() const { return this->protocol_version != ProtocolUndetected; }
   bool cycle_triggered{};
   bool cycle_active{};
   std::vector<DaikinQueryState> queries{};
+  std::size_t query_index{};
+  auto current_query() { return this->queries.begin() + this->query_index; }
   std::vector<std::string_view> failed_queries{};
-  decltype(queries)::iterator current_query{};
-  std::string_view current_command{}; // used when matching responses - backing value must have persistent lifetime across serial state machine runs
   std::vector<DaikinQueryValue> static_queries{};
+  std::string_view current_command{};
+
+  // query handlers
+  void handle_nop(std::span<uint8_t> &payload) {}
+  void handle_state_basic(std::span<uint8_t> &payload);
+  void handle_state_swing_or_humidity(std::span<uint8_t> &payload);
+  void handle_state_special_modes(std::span<uint8_t> &payload);
+  void handle_state_demand_and_econo(std::span<uint8_t> &payload);
+  void handle_state_inside_outside_temperature(std::span<uint8_t> &payload);
+  void handle_state_ir_counter(std::span<uint8_t> &payload);
+  void handle_state_power_consumption(std::span<uint8_t> &payload);
+  void handle_env_power_on_off(std::span<uint8_t> &payload);
+  void handle_env_indoor_unit_mode(std::span<uint8_t> &payload);
+  void handle_env_temperature_setpoint(std::span<uint8_t> &payload);
+  void handle_env_swing_mode(std::span<uint8_t> &payload);
+  void handle_env_fan_mode(std::span<uint8_t> &payload);
+  void handle_env_inside_temperature(std::span<uint8_t> &payload);
+  void handle_env_liquid_temperature(std::span<uint8_t> &payload);
+  void handle_env_fan_speed_setpoint(std::span<uint8_t> &payload);
+  void handle_env_fan_speed(std::span<uint8_t> &payload);
+  void handle_env_vertical_swing_angle_setpoint(std::span<uint8_t> &payload);
+  void handle_env_vertical_swing_angle(std::span<uint8_t> &payload);
+  void handle_env_target_temperature(std::span<uint8_t> &payload);
+  void handle_env_outside_temperature(std::span<uint8_t> &payload);
+  void handle_env_indoor_frequency_command_signal(std::span<uint8_t> &payload);
+  void handle_env_compressor_frequency(std::span<uint8_t> &payload);
+  void handle_env_indoor_humidity(std::span<uint8_t> &payload);
+  void handle_env_unit_state(std::span<uint8_t> &payload);
+  void handle_env_system_state(std::span<uint8_t> &payload);
+  void handle_misc_software_version(std::span<uint8_t> &payload);
 
   // debugging support
   bool debug{};
@@ -199,7 +205,17 @@ class DaikinS21 : public PollingComponent {
     uint16_t fan_rpm{};
     int16_t swing_vertical_angle_setpoint{};
     int16_t swing_vertical_angle{};
-  } current;
+    uint16_t ir_counter{};
+    uint16_t power_consumption{};
+    // modifiers
+    bool quiet{};       // outdoor unit fan/compressor limit
+    bool econo{};       // limits demand for power consumption
+    bool powerful{};    // maximum output (20 minute timeout), mutaully exclusive with quiet and econo
+    bool comfort{};     // fan angle depends on heating/cooling action
+    bool streamer{};    // electron emitter decontamination?
+    bool sensor{};      // "intelligent eye" PIR occupancy setpoint offset
+    bool sensor_led{};  // the sensor LED is on
+  } current{};
 
   struct {
     DaikinClimateSettings climate{ .mode = climate::CLIMATE_MODE_AUTO }; // unsupported sentinel value, see set_climate_settings
@@ -218,28 +234,30 @@ class DaikinS21 : public PollingComponent {
   uint8_t demand{};
   DaikinUnitState unit_state{};
   DaikinSystemState system_state{};
-  enum Modifier : uint8_t {
-    ModifierQuiet,    // outdoor unit fan/compressor limit
-    ModifierEcono,    // limits demand for power consumption
-    ModifierPowerful, // maximum output (20 minute timeout), mutaully exclusive with quiet and econo
-    ModifierComfort,  // fan angle depends on heating/cooling action
-    ModifierStreamer, // electron emitter decontamination?
-    ModifierSensor,   // "intelligent eye" PIR occupancy setpoint offset
-    ModifierLED,      // the sensor LED is on
-    ModifierCount,    // just for bitset sizing
-  };
-  std::bitset<ModifierCount> modifiers{};
 
   // protocol support
   bool determine_protocol_version();
   ProtocolVersion protocol_version{ProtocolUndetected};
-  char G2_model_info{};
   struct {
-    bool inside_temperature{};
-    bool outside_temperature{};
+    // for alternate readout
+    bool inside_temperature_query{};
+    bool outside_temperature_query{};
+    bool humidity_query{};
+    // supported
+    char model_info{'?'};
     bool swing{};
     bool horizontal_swing{};
     bool humidity{};
+    bool fan{};
+    // unsupported
+    bool ac_led{};
+    bool laundry{};
+    bool elec{};
+    bool temp_range{};
+    bool motion_detect{};
+    bool ac_japan{};
+    bool dry{};
+    bool demand{};  // ignored if protocol <= 2
   } support;
 };
 
