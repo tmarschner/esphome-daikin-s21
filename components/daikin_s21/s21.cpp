@@ -420,11 +420,15 @@ void DaikinS21::handle_serial_idle() {
   this->refine_queries();
   this->cycle_time_ms = now - this->cycle_time_start_ms;
   if (this->ready.all()) {
-    if ((this->current.action_reported == climate::CLIMATE_ACTION_FAN) || this->unit_state.active()) {
-      this->current.action = this->current.action_reported;
+    // resolve action
+    if (this->unit_state.defrost() && (this->current.action_reported == climate::CLIMATE_ACTION_HEATING)) {
+      this->current.action = climate::CLIMATE_ACTION_COOLING; // report cooling during defrost
+    } else if (this->unit_state.active() || (this->current.action_reported == climate::CLIMATE_ACTION_FAN)) {
+      this->current.action = this->current.action_reported; // trust the unit when active or in fan only
     } else {
       this->current.action = climate::CLIMATE_ACTION_IDLE;
     }
+    // resolve presets
     if (this->modifiers[ModifierPowerful]) {
       this->current.climate.preset = climate::CLIMATE_PRESET_BOOST;
     } else if (this->modifiers[ModifierEcono]) {
@@ -432,7 +436,6 @@ void DaikinS21::handle_serial_idle() {
     } else {
       this->current.climate.preset = climate::CLIMATE_PRESET_NONE;
     }
-
     // signal there's fresh data
     if (this->binary_sensor_callback) {
       this->binary_sensor_callback(this->unit_state, this->system_state);
