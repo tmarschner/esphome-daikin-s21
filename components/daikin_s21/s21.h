@@ -145,9 +145,7 @@ class DaikinS21 : public PollingComponent {
   bool is_free_run() const { return this->get_update_interval() == 0; }
   void trigger_cycle();
   void start_cycle();
-  bool is_query_active(std::string_view query_str) const;
-  bool is_query_unsupported(std::string_view query_str) const;
-  std::optional<std::span<const uint8_t>> get_static_query(std::string_view query_str) const;
+  DaikinQueryResult get_query_result(std::string_view query_str) const;
   void prune_query(std::string_view query_str);
   void refine_queries();
   void send_command(std::string_view command, std::span<const uint8_t> payload);

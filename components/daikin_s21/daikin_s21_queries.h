@@ -159,4 +159,15 @@ class DaikinQueryState : public DaikinQueryValue {
   uint8_t naks{};
 };
 
+class DaikinQueryResult {
+ public:
+  std::span<const uint8_t> value{};
+  bool ack{};
+  bool nak{};
+
+  operator bool() const {
+    return this->ack || this->nak;
+  }
+};
+
 } // namespace esphome::daikin_s21
