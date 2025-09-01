@@ -92,28 +92,6 @@ uint8_t climate_swing_mode_to_daikin(const climate::ClimateSwingMode mode) {
   }
 }
 
-std::string_view protocol_to_string(const ProtocolVersion version) {
-  switch (version) {
-    case ProtocolUnknown:
-      return "Unknown";
-    case Protocol0:
-      return "0";
-    case Protocol2:
-      return "2";
-    case Protocol3_0:
-      return "3.0";
-    case Protocol3_1:
-      return "3.1";
-    case Protocol3_2:
-      return "3.2";
-    case Protocol3_4:
-      return "3.4";
-    case ProtocolUndetected:
-    default:
-      return "Undetected";
-  }
-}
-
 int16_t bytes_to_num(std::span<const uint8_t> bytes) {
   // <ones><tens><hundreds[><neg/pos>,<thousands>]
   int16_t val = 0;
@@ -282,7 +260,7 @@ void DaikinS21::prune_query(std::string_view query_str) {
 void DaikinS21::refine_queries() {
   if (this->comms_detected() == false) {
     if (this->determine_protocol_version()) {
-      ESP_LOGD(TAG, "Protocol version %" PRI_SV " detected", PRI_SV_ARGS(protocol_to_string(this->protocol_version)));
+      ESP_LOGD(TAG, "Protocol version %" PRIu8 ".%" PRIu8 " detected", this->protocol_version.major, this->protocol_version.minor);
       // todo could try to this->queries.reserve() space for a single allocation, but this branch only occurs once...
       // >= Protocol0
       this->queries.insert(this->queries.end(), {
@@ -294,13 +272,13 @@ void DaikinS21::refine_queries() {
         // {StateQuery::OldProtocol, &DaikinS21::handle_nop, true}, // already added in initial detection
         // {StateQuery::InsideOutsideTemperatures, &DaikinS21::handle_state_inside_outside_temperature}, // added if granular sensors fail
       });
-      if (this->protocol_version <= Protocol2) {
+      if (this->protocol_version <= ProtocolVersion(2)) {
         this->queries.insert(this->queries.end(), {
           {MiscQuery::Model, &DaikinS21::handle_nop, true}, // some sort of model? always "3E53" for me, regardless of head unit
           {MiscQuery::Version, &DaikinS21::handle_nop, true}, // purportedly another version, always "00C0" for me
         });
       }
-      if (this->protocol_version >= Protocol2) {
+      if (this->protocol_version >= ProtocolVersion(2)) {
         this->queries.insert(this->queries.end(), {
           {StateQuery::SpecialModes, &DaikinS21::handle_state_special_modes},
           {StateQuery::DemandAndEcono, &DaikinS21::handle_state_demand_and_econo},
@@ -319,7 +297,7 @@ void DaikinS21::refine_queries() {
           {MiscQuery::SoftwareVersion, &DaikinS21::handle_misc_software_version, true},
         });
       }
-      // todo >= Protocol3_0
+      // todo >= ProtocolVersion(3,0)
       // common sensors
       this->queries.insert(this->queries.end(), {
         // {EnvironmentQuery::PowerOnOff, &DaikinS21::handle_env_power_on_off}, // redundant
@@ -354,13 +332,13 @@ void DaikinS21::refine_queries() {
       const auto features = this->get_query_result(StateQuery::OptionalFeatures);
       const auto v2_features = this->get_query_result(StateQuery::V2OptionalFeatures);
       // done if all queries have been resolved
-      this->ready[ReadyOptionalFeatures] = (features && ((this->protocol_version < Protocol2) || v2_features));
+      this->ready[ReadyOptionalFeatures] = (features && ((this->protocol_version < ProtocolVersion(2)) || v2_features));
       // handle results
       if (this->ready[ReadyOptionalFeatures]) {
         ESP_LOGD(TAG, "Optional features detected");
 
         // v2 GK info gates base G2 support if present
-        if ((this->protocol_version < Protocol2) || v2_features.nak || (v2_features.ack && (v2_features.value)[2] & 0b00000100)) {
+        if ((this->protocol_version < ProtocolVersion(2)) || v2_features.nak || (v2_features.ack && (v2_features.value)[2] & 0b00000100)) {
           // swing
           this->support.swing = (features.ack && (features.value[0] & 0b0100));
           if (this->support.swing) {
@@ -377,7 +355,7 @@ void DaikinS21::refine_queries() {
         }
 
         // humidity
-        if ((this->protocol_version < Protocol2) || v2_features.nak || (v2_features.ack && (v2_features.value[2] & 0b00000010))) {
+        if ((this->protocol_version < ProtocolVersion(2)) || v2_features.nak || (v2_features.ack && (v2_features.value[2] & 0b00000010))) {
           this->support.humidity = (features.ack && (features.value[0] & 0b0010));
           if (this->support.humidity) {
             // unknown if this is a dehumidify mode or humidity sensor. potentially hides the sensor if it's just the mode. my unit supports neither over S21 interface.
@@ -709,46 +687,37 @@ void DaikinS21::handle_misc_software_version(std::span<uint8_t> &payload) {
  */
 bool DaikinS21::determine_protocol_version() {
   static constexpr uint8_t old_version_0[4] = {'0',0,0,0};
+  static constexpr uint8_t old_version_1[4] = {'0','1',0,0};
   static constexpr uint8_t old_version_2or3[4] = {'0','2',0,0};
   static constexpr uint8_t old_version_31plus[4] = {'0','2','0','0'};
-  static constexpr uint8_t new_version_300[4] = {'0','0','3','0'};
-  static constexpr uint8_t new_version_320[4] = {'0','2','3','0'};
-  static constexpr uint8_t new_version_340[4] = {'0','4','3','0'};
 
-  // both protocol indicators should have been resolved if we're in here
+  // both protocol indicators should have been scheduled if we're in here
   const auto old_proto = this->get_query_result(StateQuery::OldProtocol);
   const auto new_proto = this->get_query_result(StateQuery::NewProtocol);
 
   // Check availability first
   if (old_proto.ack && new_proto.nak) {
     if (std::ranges::equal(old_proto.value, old_version_0)) {
-      this->protocol_version = Protocol0;
+      this->protocol_version = ProtocolVersion(0);
+    } else if (std::ranges::equal(old_proto.value, old_version_1)) {
+      this->protocol_version = ProtocolVersion(1);
     } else if (std::ranges::equal(old_proto.value, old_version_2or3) || std::ranges::equal(old_proto.value, old_version_31plus)) {
-      this->protocol_version = Protocol2; // NAK for NewProtocol rules out 3.0
+      this->protocol_version = ProtocolVersion(2); // NAK for NewProtocol rules out 3.0
     } else {
       this->protocol_version = ProtocolUnknown;
     }
+    // todo protocol 1
   } else if (old_proto && new_proto.ack) {
-    if (std::ranges::equal(new_proto.value, new_version_300)) {
-      if (old_proto.nak) {
-        this->protocol_version = ProtocolUnknown; // Need old protocol to make the distinction
-      } else if (std::ranges::equal(old_proto.value, old_version_2or3)) {
-        this->protocol_version = Protocol3_0; // ACK for NewProtocol means 3.0 has support for this query
-      } else if (std::ranges::equal(old_proto.value, old_version_31plus)) {
-        this->protocol_version = Protocol3_1;
-      } else {
-        this->protocol_version = ProtocolUnknown;
+    const uint16_t raw_version = bytes_to_num(new_proto.value);
+    this->protocol_version = {static_cast<uint8_t>(raw_version / 100), static_cast<uint8_t>(raw_version % 100)};
+    // fixup on the 2 / 3.0 protocol border
+    if (this->protocol_version == ProtocolVersion(3,0)) {
+      if (old_proto.ack && std::ranges::equal(old_proto.value, old_version_31plus)) {
+        this->protocol_version = ProtocolVersion(3,10);
       }
-    } else if (std::ranges::equal(new_proto.value, new_version_320)) {
-      this->protocol_version = Protocol3_2;
-    } else if (std::ranges::equal(new_proto.value, new_version_340)) {
-      this->protocol_version = Protocol3_4;
-    } else {
-      this->protocol_version = ProtocolUnknown;
     }
   } else if (old_proto.nak && new_proto.nak) {
     // both nak'd, even though we're talking to the unit?
-    ESP_LOGE(TAG, "Unable to detect a protocol version!");
     this->protocol_version = ProtocolUnknown;
   } else {
     ESP_LOGV(TAG, "Protocol version not ready yet");
@@ -888,7 +857,7 @@ void DaikinS21::handle_serial_result(const DaikinSerial::Result result, const st
 }
 
 void DaikinS21::dump_state() {
-  ESP_LOGD(TAG, "  Protocol: %" PRI_SV, PRI_SV_ARGS(protocol_to_string(this->protocol_version)));
+  ESP_LOGD(TAG, "  Protocol: %" PRIu8 ".%" PRIu8, this->protocol_version.major, this->protocol_version.minor);
   if (this->debug) {
     {
       const auto old_proto = this->get_query_result(StateQuery::OldProtocol);
