@@ -15,6 +15,7 @@ class DaikinS21Climate : public climate::Climate,
                          public Parented<DaikinS21> {
  public:
   void setup() override;
+  void loop() override;
   void dump_config() override;
   void control(const climate::ClimateCall &call) override;
   void update_handler();
@@ -57,7 +58,6 @@ class DaikinS21Climate : public climate::Climate,
   optional<float> load_setpoint();
   bool should_check_setpoint();
   void set_s21_climate();
-  void set_command_timeout(uint32_t delay_ms = state_publication_timeout_ms);
   void command_timeout_handler();
 };
 

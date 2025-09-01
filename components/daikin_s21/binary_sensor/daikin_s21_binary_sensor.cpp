@@ -5,11 +5,14 @@ namespace esphome::daikin_s21 {
 static const char *const TAG = "daikin_s21.binary_sensor";
 
 void DaikinS21BinarySensor::setup() {
-  this->get_parent()->binary_sensor_callback = std::bind(&DaikinS21BinarySensor::update_handler, this, std::placeholders::_1, std::placeholders::_2); // enable update events from DaikinS21
+  this->get_parent()->binary_sensor_callback = std::bind(&DaikinS21BinarySensor::update_handler, this); // enable update events from DaikinS21
   this->disable_loop(); // wait for updates
 }
 
-void DaikinS21BinarySensor::update_handler(const DaikinUnitState unit, const DaikinSystemState system) {
+void DaikinS21BinarySensor::loop() {
+  const DaikinUnitState unit = this->get_parent()->get_unit_state();
+  const DaikinSystemState system = this->get_parent()->get_system_state();
+
   if (this->powerful_sensor_ != nullptr) {
     this->powerful_sensor_->publish_state(unit.powerful());
   }
@@ -34,6 +37,12 @@ void DaikinS21BinarySensor::update_handler(const DaikinUnitState unit, const Dai
   if (this->multizone_conflict_sensor_ != nullptr) {
     this->multizone_conflict_sensor_->publish_state(!system.multizone_conflict()); // invert for Home Assistant locked/unlocked logic
   }
+
+  this->disable_loop(); // wait for further updates
+}
+
+void DaikinS21BinarySensor::update_handler() {
+  this->enable_loop_soon_any_context();  // defer publish to next loop()
 }
 
 void DaikinS21BinarySensor::dump_config() {

@@ -137,7 +137,9 @@ void DaikinSerial::send_frame(const std::string_view cmd, const std::span<const 
   if (cmd.size() > MAX_COMMAND_SIZE) {
     ESP_LOGE(TAG, "Tx: Command '%" PRI_SV "' too large", PRI_SV_ARGS(cmd));
     this->get_parent()->handle_serial_result(Result::Error);
-    this->set_busy_timeout(DaikinSerial::error_delay_period_ms);  // prevent spam by blocking for a while
+    // prevent spam by marking the component as busy
+    // called from DaikinS21 context when idle, trigger it again after a cooldown without touching DaikinSerial's loop state
+    this->set_timeout(DaikinSerial::timer_name, DaikinSerial::error_delay_period_ms, std::bind(&DaikinS21::handle_serial_idle, this->get_parent()));
     return;
   }
 
@@ -176,7 +178,7 @@ void DaikinSerial::send_frame(const std::string_view cmd, const std::span<const 
   // wait for result
   this->comm_state = payload.empty() ? CommState::QueryAck : CommState::CommandAck;
   this->set_rx_timeout();
-  this->enable_loop();
+  this->enable_loop_soon_any_context();
 }
 
 void DaikinSerial::set_ack_timeout(const int bytes_received) {
