@@ -13,16 +13,16 @@ fragmentation, but he lacks the time at the moment to manage the project.
 
 ## Features
 
-Climate:
-- Setpoint temperature.
-- Selectable climate modes OFF, HEAT_COOL, COOL, HEAT, FAN_ONLY and DRY.
-- Independent climate action reporting. See what your unit is trying to do, e.g. heating while in HEAT_COOL.
-- Fan modes auto, silent and 1-5.
-- Swing modes horizontal, vertical, and both.
-- Untested support for Powerful and Econo presets ("Boost" and "Eco").
-- Optional humidity reporting.
+### Climate
+* Setpoint temperature.
+* Selectable climate modes OFF, HEAT_COOL, COOL, HEAT, FAN_ONLY and DRY.
+* Independent climate action reporting. See what your unit is trying to do, e.g. heating while in HEAT_COOL.
+* Fan modes auto, silent and 1-5.
+* Swing modes horizontal, vertical, and both.
+* Untested support for Powerful and Econo presets ("Boost" and "Eco").
+* Optional humidity reporting.
 
-Sensor:
+### Sensor
 * Inside temperature (usually measured at indoor air handler return)
 * Outside temperature (outside exchanger)
 * Coil temperature (indoor air handler's coil)
@@ -32,12 +32,18 @@ Sensor:
 * Humidity (not supported on all units, will report a consistent 50% if not present)
 * Unit demand from outside exchanger
 
-Binary Sensor:
-* New, extracted from the unit and system state bitfields. Still need to observe to see how valuable these are.
+### Binary Sensor
 
-On multihead systems the outdoor values will be the same (accounting for sampling jitter). It
-could be cleaner to only configure these sensors on your "primary" ESPhome device. ESPHome is
-adding support for multiple devices, when this is released I will document how to do this.
+New, extracted from the unit and system state bitfields. Still need to observe
+to see how valuable these are. I may remove the redundant ones in the future.
+
+* Powerful
+* Defrost
+* Active (Actively controlling climate, climate action can tell us this)
+* Online (In a climate controlling mode, climate mode can tell us this)
+* Refrigerant Value (shadows active?)
+* System Defrost (shadows defrost?)
+* Multizone settings conflict
 
 ## Limitations
 
@@ -49,7 +55,7 @@ See the framework selection in the configuration example.
 
 * This code has only been tested on ESP32 pico and ESP32-S3.
 * Tested with 4MXL36TVJU outdoor unit and CTXS07LVJU, FTXS12LVJU, FTXS15LVJU indoor units.
-* Powerful and econo modes are untested (no hardware).
+* Powerful and econo modes are untested (no v2 hardware).
 * Does not support comfort or presence detection features on some models.
 * Does not interact with the indoor units schedules (do that with HA instead).
 * Currently targets Version 0 protocol support due to the equipment available to the author.
@@ -77,7 +83,8 @@ plug pins are at standard 2.5mm pin header widths.
 joshbenner uses the board designed by [revk][1] available [here][3]. Note that
 revk's design includes a FET that inverts the logic levels on the ESP's RX pin,
 which required using two separate UART devices to get around an ESPHome limit
-on having pins inverted differently using the Arduino framework.
+on having pins inverted differently using the Arduino framework. This handling is
+now moved behind the split_uart component.
 
 ### PCB Option 2
 
@@ -112,13 +119,33 @@ UART configuration and inverting the RX line with ESPHome's pin schema works wit
 ESP-IDF and (when it's working again) the Arduino framework. i.e. Not using the
 split_uart component. If so, I can remove this custom code and simplify configuration.
 
-See existing issues or open a new one with your findings. Thanks.
+See existing issues, open a new one or post in the discussions section with
+your findings. Thanks.
 
-## Configuration Example
+## Configuration
+
+On multihead systems some values that come from the outdoor unit will be the
+same (accounting for sampling jitter). It's recommended to use ESPHome's
+subdevice feature to only configure these sensors on your "primary" ESPHome
+instance as a subdevice to keep individual indoor unit representations cleaner.
+See the configuration example below. This feature seems designed for the
+one-to-many case, whereas this system is more of a many-to-one configuration.
+Locally I have two configuration template files, one for indoor only units and
+one for a single indoor unit with an outdoor unit subdevice. If I can find a
+better solution I'll update the example.
+
+When using an external temperature sensor as a room reference instead of the
+internal Daikin value (which may be misleading due to placement of the unit)
+it's recommended to change the target_temperature step to 0.5C to reflect the
+granularity of the alternate control loop provided. The default is 1.0C to
+match Daikin's internal granularity.
 
 ```yaml
 esphome:
   min_version: "2025.8"
+  devices:
+    - id: daikin_outdoor
+      name: "Daikin Compressor"
 
 esp32:
   framework:
@@ -140,7 +167,7 @@ uart:
 # The parent UART communication hub platform.
 daikin_s21:
   uart: s21_uart
-  # update_interval: 15s  # supports periodic polling instead of more responsive free run
+  # update_interval: 15s  # also supports periodic polling instead of more responsive free run
 
 climate:
   - name: My Daikin
@@ -170,6 +197,7 @@ sensor:
       name: My Daikin Inside Temperature
     outside_temperature:
       name: My Daikin Outside Temperature
+      device_id: daikin_outdoor
     coil_temperature:
       name: My Daikin Coil Temperature
     fan_speed:
@@ -178,6 +206,7 @@ sensor:
       name: Swing Vertical Angle
     compressor_frequency:
       name: Compressor Frequency
+      device_id: daikin_outdoor
     humidity:
       name: Humidity
     demand:
@@ -206,10 +235,13 @@ binary_sensor:
       name: Valve
     short_cycle:
       name: Short Cycle
+      device_id: daikin_outdoor
     system_defrost:
       name: System Defrost
+      device_id: daikin_outdoor
     multizone_conflict:
       name: Multizone Conflict
+      device_id: daikin_outdoor
 ```
 
 Here is an example of how daikin_s21 can be used with one inverted UART pin:
