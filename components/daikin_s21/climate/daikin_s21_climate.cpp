@@ -48,40 +48,28 @@ void DaikinS21Climate::setup() {
   this->preset = commanded.preset;
   // enable event driven updates
   this->get_parent()->climate_callback = std::bind(&DaikinS21Climate::update_handler, this); // enable update events from DaikinS21
-  this->set_command_timeout(0);  // schedule an immediate update to capture the current state (change detection on update requires a "previous" state)
-  this->disable_loop(); // wait for updates
+  // allow loop() to execute once to capture the current state (change detection on update requires a "previous" state)
 }
 
 /**
- * Command timeout handler
+ * ESPHome component loop
  *
- * Called when a command times out without seeming to take effect.
- * Trigger a publish of the current state.
- */
-void DaikinS21Climate::command_timeout_handler() {
-  command_active = false;
-  update_handler();
-}
-
-/**
- * Update handler
+ * Deferred work from update_handler()
  *
  * Update climate state if a previous command isn't in progress.
  * Publish any state changes to Home Assistant.
- *
- * Called by DaikinS21 on every complete system state update.
  */
-void DaikinS21Climate::update_handler() {
+void DaikinS21Climate::loop() {
   const auto& reported = this->get_parent()->get_climate_settings();
 
   // If an active command took effect, cancel the timeout and lift the publication ban
-  if (command_active && (this->commanded == reported)) {
+  if (this->command_active && (this->commanded == reported)) {
     this->command_active = false;
     this->cancel_timeout(command_timeout_name);
   }
 
   // Don't publish current state if a command is in progress -- avoids UI glitches
-  if (command_active == false) {
+  if (this->command_active == false) {
     // Allowed to publish, determine if we should
     bool do_publish = false;
 
@@ -148,6 +136,28 @@ void DaikinS21Climate::update_handler() {
       this->publish_state();
     }
   }
+
+  this->disable_loop(); // wait for updates
+}
+
+/**
+ * Command timeout handler
+ *
+ * Called when a command times out without seeming to take effect.
+ * Trigger a publish of the current state.
+ */
+void DaikinS21Climate::command_timeout_handler() {
+  this->command_active = false;
+  this->loop();
+}
+
+/**
+ * Update handler
+ *
+ * Called by DaikinS21 on every complete system state update.
+ */
+void DaikinS21Climate::update_handler() {
+  this->enable_loop_soon_any_context(); // defer publish to next loop()
 }
 
 void DaikinS21Climate::dump_config() {
@@ -364,7 +374,14 @@ void DaikinS21Climate::set_s21_climate() {
   this->commanded.fan = string_to_daikin_fan_mode(this->custom_fan_mode.value());
   this->commanded.preset = this->preset.value();
   this->get_parent()->set_climate_settings(this->commanded);
-  this->set_command_timeout();
+
+  // HVAC unit takes a few seconds to begin reporting settings changes back to
+  // the controller, so when modifying don't publish current state until it
+  // takes effect or is given enough time to take effect or we get a jumpy UI
+  // in Home Assistant as stale state is published over the commanded state
+  // followed by the active state.
+  this->command_active = true;
+  this->set_timeout(command_timeout_name, DaikinS21Climate::state_publication_timeout_ms, std::bind(&DaikinS21Climate::command_timeout_handler, this));
 
   ESP_LOGI(TAG, "Controlling S21 climate:");
   ESP_LOGI(TAG, "  Mode: %s", LOG_STR_ARG(climate::climate_mode_to_string(this->commanded.mode)));
@@ -374,22 +391,6 @@ void DaikinS21Climate::set_s21_climate() {
   ESP_LOGI(TAG, "  Preset: %s", LOG_STR_ARG(climate::climate_preset_to_string(this->commanded.preset)));
 
   this->save_setpoint(this->target_temperature);
-}
-
-/**
- * Set the command timeout.
- *
- * HVAC unit takes a few seconds to begin reporting settings changes back to
- * the controller, so when modifying don't publish current state until it
- * takes effect or is given enough time to take effect or we get a jumpy UI
- * in Home Assistant as stale state is published over the commanded state
- * followed by the active state.
- *
- * If the timeout expires the state will be published regardless.
- */
-void DaikinS21Climate::set_command_timeout(const uint32_t delay_ms /*= state_publication_timeout_ms*/) {
-  command_active = true;
-  this->set_timeout(command_timeout_name, delay_ms, std::bind(&DaikinS21Climate::command_timeout_handler, this));
 }
 
 } // namespace esphome::daikin_s21

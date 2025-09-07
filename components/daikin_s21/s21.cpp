@@ -521,9 +521,9 @@ void DaikinS21::handle_serial_idle() {
   this->cycle_time_ms = now - this->cycle_time_start_ms;
   if (this->ready.all()) {
     // resolve action
-    if (this->unit_state.defrost() && (this->current.action_reported == climate::CLIMATE_ACTION_HEATING)) {
+    if (this->current.unit_state.defrost() && (this->current.action_reported == climate::CLIMATE_ACTION_HEATING)) {
       this->current.action = climate::CLIMATE_ACTION_COOLING; // report cooling during defrost
-    } else if (this->unit_state.active() || (this->current.action_reported == climate::CLIMATE_ACTION_FAN)) {
+    } else if (this->current.unit_state.active() || (this->current.action_reported == climate::CLIMATE_ACTION_FAN)) {
       this->current.action = this->current.action_reported; // trust the unit when active or in fan only
     } else {
       this->current.action = climate::CLIMATE_ACTION_IDLE;
@@ -538,7 +538,7 @@ void DaikinS21::handle_serial_idle() {
     }
     // signal there's fresh data
     if (this->binary_sensor_callback) {
-      this->binary_sensor_callback(this->unit_state, this->system_state);
+      this->binary_sensor_callback();
     }
     if (this->climate_callback) {
       this->climate_callback();
@@ -547,7 +547,7 @@ void DaikinS21::handle_serial_idle() {
 
   if ((now - last_state_dump_ms) > (60 * 1000)) { // every minute
     last_state_dump_ms = now;
-    this->enable_loop();  // dump state in foreground, blocks for too long here
+    this->enable_loop_soon_any_context();  // dump state in foreground, blocks for too long here
   }
 
   // Start fresh polling query cycle (triggered never cleared in free run)
@@ -686,12 +686,12 @@ void DaikinS21::handle_env_indoor_humidity(std::span<uint8_t> &payload) {
 }
 
 void DaikinS21::handle_env_unit_state(std::span<uint8_t> &payload) {
-  this->unit_state = ahex_digit(payload[0]);
-  this->current.powerful = this->unit_state.powerful();  // if G6 is unsupported we can still read out powerful set by remote
+  this->current.unit_state = ahex_digit(payload[0]);
+  this->current.powerful = this->current.unit_state.powerful();  // if G6 is unsupported we can still read out powerful set by remote
 }
 
 void DaikinS21::handle_env_system_state(std::span<uint8_t> &payload) {
-  this->system_state = ahex_u8_le(payload[0], payload[1]);
+  this->current.system_state = ahex_u8_le(payload[0], payload[1]);
 }
 
 void DaikinS21::handle_misc_software_version(std::span<uint8_t> &payload) {
@@ -943,7 +943,7 @@ void DaikinS21::dump_state() {
   }
   ESP_LOGD(TAG, " Demand: %" PRIu8, this->get_demand());
   ESP_LOGD(TAG, " Cycle Time: %" PRIu32 "ms", this->cycle_time_ms);
-  ESP_LOGD(TAG, " UnitState: %" PRIX8 " SysState: %02" PRIX8, this->unit_state.raw, this->system_state.raw);
+  ESP_LOGD(TAG, " UnitState: %" PRIX8 " SysState: %02" PRIX8, this->current.unit_state.raw, this->current.system_state.raw);
   if (this->debug) {
     const auto comma_join = [](const auto& queries) {
       std::string str;

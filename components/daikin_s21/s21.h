@@ -102,7 +102,7 @@ class DaikinS21 : public PollingComponent {
   // external command action
   void set_climate_settings(const DaikinClimateSettings &settings);
 
-  std::function<void(DaikinUnitState, DaikinSystemState)> binary_sensor_callback{};
+  std::function<void(void)> binary_sensor_callback{};
   std::function<void(void)> climate_callback{};
 
   // value accessors
@@ -123,6 +123,8 @@ class DaikinS21 : public PollingComponent {
   auto get_compressor_frequency() { return this->compressor_hz; }
   auto get_humidity() { return this->humidity; }
   auto get_demand() { return this->demand; }
+  auto get_unit_state() { return this->current.unit_state; }
+  auto get_system_state() { return this->current.system_state; }
 
   // callbacks for serial events
   void handle_serial_result(DaikinSerial::Result result, std::span<uint8_t> response = {});
@@ -205,6 +207,8 @@ class DaikinS21 : public PollingComponent {
     int16_t swing_vertical_angle{};
     uint16_t ir_counter{};
     uint16_t power_consumption{};
+    DaikinUnitState unit_state{0x4};  // not always supported, default to active for action reporting
+    DaikinSystemState system_state{};
     // modifiers
     bool quiet{};       // outdoor unit fan/compressor limit
     bool econo{};       // limits demand for power consumption
@@ -230,8 +234,6 @@ class DaikinS21 : public PollingComponent {
   uint8_t compressor_hz{};
   uint8_t humidity{50};
   uint8_t demand{};
-  DaikinUnitState unit_state{0x4};  // not always supported, default to active for action reporting
-  DaikinSystemState system_state{};
 
   // protocol support
   bool determine_protocol_version();
