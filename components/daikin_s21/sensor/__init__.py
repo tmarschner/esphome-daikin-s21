@@ -11,11 +11,14 @@ from esphome.const import (
     UNIT_CELSIUS,
     UNIT_DEGREES,
     UNIT_HERTZ,
+    UNIT_KILOWATT_HOURS,
     UNIT_PERCENT,
     UNIT_REVOLUTIONS_PER_MINUTE,
+    ICON_COUNTER,
     ICON_FAN,
     DEVICE_CLASS_FREQUENCY,
     DEVICE_CLASS_HUMIDITY,
+    DEVICE_CLASS_POWER,
     DEVICE_CLASS_TEMPERATURE,
     DEVICE_CLASS_WIND_DIRECTION,
     STATE_CLASS_MEASUREMENT,
@@ -38,6 +41,8 @@ CONF_FAN_SPEED = "fan_speed"
 CONF_SWING_VERTICAL_ANGLE = "swing_vertical_angle"
 CONF_COMPRESSOR_FREQUENCY = "compressor_frequency"
 CONF_DEMAND = "demand"
+CONF_IR_COUNTER = "ir_counter"
+CONF_POWER_CONSUMPTION = "power_consumption"
 
 CONFIG_SCHEMA = (
     cv.COMPONENT_SCHEMA.extend(
@@ -94,6 +99,17 @@ CONFIG_SCHEMA = (
                 accuracy_decimals=1,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
+            cv.Optional(CONF_IR_COUNTER): sensor.sensor_schema(
+                icon=ICON_COUNTER,
+                accuracy_decimals=0,
+                state_class=STATE_CLASS_MEASUREMENT,
+            ),
+            cv.Optional(CONF_POWER_CONSUMPTION): sensor.sensor_schema(
+                unit_of_measurement=UNIT_KILOWATT_HOURS,
+                accuracy_decimals=2,
+                device_class=DEVICE_CLASS_POWER,
+                state_class=STATE_CLASS_MEASUREMENT,
+            ),
         }
     )
     .extend(S21_PARENT_SCHEMA)
@@ -114,6 +130,8 @@ async def to_code(config):
         (CONF_COMPRESSOR_FREQUENCY, var.set_compressor_frequency_sensor),
         (CONF_HUMIDITY, var.set_humidity_sensor),
         (CONF_DEMAND, var.set_demand_sensor),
+        (CONF_IR_COUNTER, var.set_ir_counter_sensor),
+        (CONF_POWER_CONSUMPTION, var.set_power_consumption_sensor),
     )
     for key, func in sensors:
         if key in config:

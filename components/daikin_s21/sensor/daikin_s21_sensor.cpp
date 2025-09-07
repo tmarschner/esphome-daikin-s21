@@ -31,6 +31,12 @@ void DaikinS21Sensor::update() {
   if (this->demand_sensor_ != nullptr) {
     this->demand_sensor_->publish_state(this->get_parent()->get_demand());
   }
+  if (this->ir_counter_sensor_ != nullptr) {
+    this->ir_counter_sensor_->publish_state(this->get_parent()->get_ir_counter());
+  }
+  if (this->power_consumption_sensor_ != nullptr) {
+    this->power_consumption_sensor_->publish_state(this->get_parent()->get_power_consumption() / 100.0F);
+  }
 }
 
 void DaikinS21Sensor::dump_config() {
@@ -43,6 +49,8 @@ void DaikinS21Sensor::dump_config() {
   LOG_SENSOR("  ", "Compressor Frequency", this->compressor_frequency_sensor_);
   LOG_SENSOR("  ", "Humidity", this->humidity_sensor_);
   LOG_SENSOR("  ", "Demand", this->demand_sensor_);
+  LOG_SENSOR("  ", "IR Counter", this->ir_counter_sensor_);
+  LOG_SENSOR("  ", "Power Consumption", this->power_consumption_sensor_);
 }
 
 } // namespace esphome::daikin_s21

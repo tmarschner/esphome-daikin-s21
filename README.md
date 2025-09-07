@@ -118,7 +118,7 @@ See existing issues or open a new one with your findings. Thanks.
 
 ```yaml
 esphome:
-  min_version: "2025.7"
+  min_version: "2025.8"
 
 esp32:
   framework:
@@ -184,6 +184,11 @@ sensor:
       name: Demand  # 0-15 demand units, use filter to map to %
       filters:
         - multiply: !lambda return 100.0F / 15.0F;
+    # Protocol Version 2:
+    ir_counter:
+      name: IR Counter
+    power_consumption:
+      name: Power Consumption
   - platform: homeassistant
     id: room_temp
     entity_id: sensor.office_temperature

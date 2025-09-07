@@ -37,6 +37,12 @@ class DaikinS21Sensor : public PollingComponent,
   void set_demand_sensor(sensor::Sensor *sensor) {
     this->demand_sensor_ = sensor;
   }
+  void set_ir_counter_sensor(sensor::Sensor *sensor) {
+    this->ir_counter_sensor_ = sensor;
+  }
+  void set_power_consumption_sensor(sensor::Sensor *sensor) {
+    this->power_consumption_sensor_ = sensor;
+  }
 
  protected:
   sensor::Sensor *temp_inside_sensor_{};
@@ -47,6 +53,8 @@ class DaikinS21Sensor : public PollingComponent,
   sensor::Sensor *compressor_frequency_sensor_{};
   sensor::Sensor *humidity_sensor_{};
   sensor::Sensor *demand_sensor_{};
+  sensor::Sensor *ir_counter_sensor_{};
+  sensor::Sensor *power_consumption_sensor_{};
 };
 
 } // namespace esphome::daikin_s21
