@@ -118,7 +118,7 @@ See existing issues or open a new one with your findings. Thanks.
 
 ```yaml
 esphome:
-  min_version: "2025.7"
+  min_version: "2025.8"
 
 esp32:
   framework:

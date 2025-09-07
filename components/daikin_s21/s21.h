@@ -230,7 +230,7 @@ class DaikinS21 : public PollingComponent {
   uint8_t compressor_hz{};
   uint8_t humidity{50};
   uint8_t demand{};
-  DaikinUnitState unit_state{};
+  DaikinUnitState unit_state{0x4};  // not always supported, default to active for action reporting
   DaikinSystemState system_state{};
 
   // protocol support

@@ -354,7 +354,7 @@ void DaikinS21::refine_queries() {
       const auto features = this->get_query_result(StateQuery::OptionalFeatures);
       const auto v2_features = this->get_query_result(StateQuery::V2OptionalFeatures);
       // done if all queries have been resolved
-      this->ready[ReadyOptionalFeatures] = (features && ((this->protocol_version <= Protocol2) || v2_features));
+      this->ready[ReadyOptionalFeatures] = (features && ((this->protocol_version < Protocol2) || v2_features));
       // handle results
       if (this->ready[ReadyOptionalFeatures]) {
         ESP_LOGD(TAG, "Optional features detected");
@@ -907,7 +907,7 @@ void DaikinS21::dump_state() {
       const auto software_version = this->get_query_result(MiscQuery::SoftwareVersion);
       const auto v2_features = this->get_query_result(StateQuery::V2OptionalFeatures);
       const auto ft_capacity = this->get_query_result(StateQuery::FT);
-      ESP_LOGD(TAG, "      GY00: %s  GC: %s  VS000M: %s  GK: %s  FT: %s",
+      ESP_LOGD(TAG, "      GY00: %s  GC: %s  VS000M: %s  GK: %s  GT: %s",
         str_repr(new_proto.value).c_str(),
         str_repr(model_code.value).c_str(),
         str_repr(software_version.value).c_str(),
