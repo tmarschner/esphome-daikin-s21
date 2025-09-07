@@ -18,16 +18,16 @@
 
 namespace esphome::daikin_s21 {
 
-enum ProtocolVersion {
-  ProtocolUndetected,
-  ProtocolUnknown,
-  Protocol0,
-  Protocol2,
-  Protocol3_0,
-  Protocol3_1,
-  Protocol3_2,
-  Protocol3_4,
+class ProtocolVersion {
+ public:
+  uint8_t major{};
+  uint8_t minor{};
+
+  auto operator<=>(const ProtocolVersion&) const = default;
 };
+
+inline constexpr ProtocolVersion ProtocolUndetected{0xFF, 0xFF};
+inline constexpr ProtocolVersion ProtocolUnknown{0,0xFF};  // treat as a protocol 0
 
 /**
  * Class representing a temperature in degrees C scaled by 10, the most granular internal temperature measurement format
