@@ -56,7 +56,7 @@ CONFIG_SCHEMA = cv.All(
         }
     )
     .extend(S21_PARENT_SCHEMA)
-    .extend(cv.polling_component_schema("0s"))
+    .extend(cv.polling_component_schema("60s"))
 )
 
 async def to_code(config):
