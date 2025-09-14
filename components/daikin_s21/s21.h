@@ -67,6 +67,8 @@ class DaikinS21 : public PollingComponent {
     ReadyBasic,
     ReadyOptionalFeatures,
     ReadySensorReadout,
+    ReadyModelDetection,
+    ReadyActiveSource,
     ReadyCount, // just for bitset sizing
   };
   std::bitset<ReadyCount> ready{};
@@ -96,6 +98,7 @@ class DaikinS21 : public PollingComponent {
   void handle_state_special_modes(std::span<uint8_t> &payload);
   void handle_state_demand_and_econo(std::span<uint8_t> &payload);
   void handle_state_inside_outside_temperature(std::span<uint8_t> &payload);
+  void handle_state_model_code_v2(std::span<uint8_t> &payload);
   void handle_state_ir_counter(std::span<uint8_t> &payload);
   void handle_state_power_consumption(std::span<uint8_t> &payload);
   void handle_env_power_on_off(std::span<uint8_t> &payload);
@@ -114,8 +117,10 @@ class DaikinS21 : public PollingComponent {
   void handle_env_indoor_frequency_command_signal(std::span<uint8_t> &payload);
   void handle_env_compressor_frequency(std::span<uint8_t> &payload);
   void handle_env_indoor_humidity(std::span<uint8_t> &payload);
+  void handle_env_compressor_on_off(std::span<uint8_t> &payload);
   void handle_env_unit_state(std::span<uint8_t> &payload);
   void handle_env_system_state(std::span<uint8_t> &payload);
+  void handle_misc_model_v0(std::span<uint8_t> &payload);
   void handle_misc_software_version(std::span<uint8_t> &payload);
 
   // debugging support
@@ -138,7 +143,7 @@ class DaikinS21 : public PollingComponent {
     DaikinUnitState unit_state{};
     DaikinSystemState system_state{};
     // modifiers
-    bool active{true};  // actively using the compressor, pulled from unit_state when present. default to true for action reporting when missing.
+    bool active{};      // actively using the compressor
     bool quiet{};       // outdoor unit fan/compressor limit
     bool econo{};       // limits demand for power consumption
     bool powerful{};    // maximum output (20 minute timeout), mutaully exclusive with quiet and econo
@@ -167,12 +172,16 @@ class DaikinS21 : public PollingComponent {
   // protocol support
   bool determine_protocol_version();
   ProtocolVersion protocol_version{ProtocolUndetected};
+  DaikinModel modelV0{ModelUnknown};
+  DaikinModel modelV2{ModelUnknown};
   struct {
     // for alternate readout
     bool fan_mode_query{};
     bool inside_temperature_query{};
     bool outside_temperature_query{};
     bool humidity_query{};
+    bool unit_system_state_queries{};
+    ActiveSource active_source{ActiveSource::Unknown};
     // supported
     char model_info{'?'};
     bool swing{};
