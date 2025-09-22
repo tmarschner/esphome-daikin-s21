@@ -36,7 +36,7 @@ class DaikinS21 : public PollingComponent {
   const DaikinClimateSettings& get_climate_settings() { return this->current.climate; };
   auto get_climate_mode() { return this->current.climate.mode; }
   auto get_climate_action() { return this->current.action; }
-  auto get_setpoint() { return this->current.climate.setpoint; }
+  auto get_temp_setpoint() { return this->current.climate.setpoint; }
   auto get_temp_inside() { return this->temp_inside; }
   auto get_temp_target() { return this->temp_target; }
   auto get_temp_outside() { return this->temp_outside; }

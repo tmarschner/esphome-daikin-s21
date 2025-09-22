@@ -405,10 +405,11 @@ void DaikinS21::refine_queries() {
       this->support.outside_temperature_query = outside.ack;
       this->support.humidity_query = humidity.ack;
       // enable coarse fallback query if any sensor query failed
-      if (inside.nak || outside.nak || (this->support.humidity && humidity.nak)) {  // only enable for humidity's sake if declared to be supported
+      const bool alt = (inside.nak || outside.nak || (this->support.humidity && humidity.nak)); // only enable for humidity's sake if declared to be supported
+      if (alt) {
         this->queries.emplace_back(StateQuery::InsideOutsideTemperatures, &DaikinS21::handle_state_inside_outside_temperature);
       }
-      ESP_LOGD(TAG, "Sensor readout selected");
+      ESP_LOGD(TAG, "%s sensor readout selected", alt ? "Alternate" : "Dedicated");
     }
   }
 
@@ -438,7 +439,7 @@ void DaikinS21::refine_queries() {
         });
       }
       // no v2 handling required yet
-      ESP_LOGD(TAG, "Model detected");
+      ESP_LOGD(TAG, "Model %04" PRIX16 " %04" PRIX16 " detected", this->modelV0, this->modelV2);
     }
   }
 
@@ -465,7 +466,8 @@ void DaikinS21::refine_queries() {
     // handle results
     this->ready[ReadyActiveSource] = (this->support.active_source != ActiveSource::Unknown);
     if (this->ready[ReadyActiveSource]) {
-      ESP_LOGD(TAG, "Active source selected");
+      ESP_LOGD(TAG, "Active source is %s",
+          std::array{"undetected","Rg","unit state","assumed on"}[static_cast<uint8_t>(this->support.active_source)]);
     }
   }
 }
@@ -936,60 +938,60 @@ void DaikinS21::handle_serial_result(const DaikinSerial::Result result, const st
 }
 
 void DaikinS21::dump_state() {
-  ESP_LOGD(TAG, "  Protocol: %" PRIu8 ".%" PRIu8 "  ModelV0: %04" PRIX16 "  ModelV2: %04" PRIX16,
-    this->protocol_version.major, this->protocol_version.minor, this->modelV0, this->modelV2);
+  ESP_LOGD(TAG, "Protocol: %" PRIu8 ".%" PRIu8 "  ModelV0: %04" PRIX16 "  ModelV2: %04" PRIX16,
+      this->protocol_version.major,
+      this->protocol_version.minor,
+      this->modelV0,
+      this->modelV2);
   if (this->debug) {
-    {
-      const auto old_proto = this->get_query_result(StateQuery::OldProtocol);
-      const auto misc_model = this->get_query_result(MiscQuery::Model);
-      const auto misc_version = this->get_query_result(MiscQuery::Version);
-      const auto features = this->get_query_result(StateQuery::OptionalFeatures);
-      ESP_LOGD(TAG, "      G8: %s  M: %s  V: %s  G2: %s",
+    const auto old_proto = this->get_query_result(StateQuery::OldProtocol);
+    const auto new_proto = this->get_query_result(StateQuery::NewProtocol);
+    const auto misc_version = this->get_query_result(MiscQuery::Version);
+    const auto software_version = this->get_query_result(MiscQuery::SoftwareVersion);
+    ESP_LOGD(TAG, " G8: %s  GY00: %s  V: %s  VS000M: %s",
         str_repr(old_proto.value).c_str(),
-        str_repr(misc_model.value).c_str(),
-        str_repr(misc_version.value).c_str(),
-        features.ack ? hex_repr(features.value).c_str() : str_repr(features.value).c_str());
-    }
-    {
-      const auto new_proto = this->get_query_result(StateQuery::NewProtocol);
-      const auto model_code = this->get_query_result(StateQuery::ModelCode);
-      const auto software_version = this->get_query_result(MiscQuery::SoftwareVersion);
-      const auto v2_features = this->get_query_result(StateQuery::V2OptionalFeatures);
-      const auto ft_capacity = this->get_query_result(StateQuery::FT);
-      ESP_LOGD(TAG, "      GY00: %s  GC: %s  VS000M: %s  GK: %s  GT: %s",
         str_repr(new_proto.value).c_str(),
-        str_repr(model_code.value).c_str(),
-        str_repr(software_version.value).c_str(),
+        str_repr(misc_version.value).c_str(),
+        str_repr(software_version.value).c_str());
+  }
+  ESP_LOGD(TAG, "ModelInfo: %c  VSwing: %c  HSwing: %c  Humid: %c  Fan: %c",
+      this->support.model_info,
+      this->support.swing ? 'Y' : 'N',
+      this->support.horizontal_swing ? 'Y' : 'N',
+      this->support.humidity ? 'Y' : 'N',
+      this->support.fan ? 'Y' : 'N');
+  if (this->debug) {
+    const auto features = this->get_query_result(StateQuery::OptionalFeatures);
+    const auto v2_features = this->get_query_result(StateQuery::V2OptionalFeatures);
+    const auto ft_capacity = this->get_query_result(StateQuery::FT);
+    ESP_LOGD(TAG, " G2: %s  GK: %s  GT: %s",
+        features.ack ? hex_repr(features.value).c_str() : str_repr(features.value).c_str(),
         v2_features.ack ? hex_repr(v2_features.value).c_str() : str_repr(v2_features.value).c_str(),
         ft_capacity.ack ? hex_repr(ft_capacity.value).c_str() : str_repr(ft_capacity.value).c_str());
-    }
   }
-  ESP_LOGD(TAG, "      ModelInfo: %c  VSwing: %c  HSwing: %c  Humid: %c  Fan: %c",
-    this->support.model_info,
-    this->support.swing ? 'Y' : 'N',
-    this->support.horizontal_swing ? 'Y' : 'N',
-    this->support.humidity ? 'Y' : 'N',
-    this->support.fan ? 'Y' : 'N');
-  ESP_LOGD(TAG, "   Mode: %s  Action: %s  Preset: %s",
-          LOG_STR_ARG(climate::climate_mode_to_string(this->current.climate.mode)),
-          LOG_STR_ARG(climate::climate_action_to_string(this->get_climate_action())),
-          LOG_STR_ARG(climate::climate_preset_to_string(this->current.climate.preset)));
+  ESP_LOGD(TAG, "Mode: %s  Action: %s  Preset: %s  Demand: %" PRIu8,
+      LOG_STR_ARG(climate::climate_mode_to_string(this->current.climate.mode)),
+      LOG_STR_ARG(climate::climate_action_to_string(this->get_climate_action())),
+      LOG_STR_ARG(climate::climate_preset_to_string(this->current.climate.preset)),
+      this->get_demand());
   if (this->support.fan || this->support.swing) {
-    ESP_LOGD(TAG, "    Fan: %" PRI_SV " (%" PRIu16 " RPM)  Swing: %s",
-            PRI_SV_ARGS(daikin_fan_mode_to_string_view(this->current.climate.fan)),
-            this->current.fan_rpm,
-            this->support.swing ? LOG_STR_ARG(climate::climate_swing_mode_to_string(this->current.climate.swing)) : "N/A");
+    ESP_LOGD(TAG, "Fan: %" PRI_SV " (%" PRIu16 " RPM)  Swing: %s",
+        PRI_SV_ARGS(daikin_fan_mode_to_string_view(this->current.climate.fan)),
+        this->current.fan_rpm,
+        this->support.swing ? LOG_STR_ARG(climate::climate_swing_mode_to_string(this->current.climate.swing)) : "N/A");
   }
-  ESP_LOGD(TAG, " Target: %.1f C  Inside: %.1f C  Coil: %.1f C",
-          this->current.climate.setpoint.f_degc(),
-          this->temp_inside.f_degc(),
-          this->temp_coil.f_degc());
+  ESP_LOGD(TAG, "Setpoint: %.1fC  Target: %.1fC  Inside: %.1fC  Coil: %.1fC",
+      this->get_temp_setpoint().f_degc(),
+      this->get_temp_target().f_degc(),
+      this->get_temp_inside().f_degc(),
+      this->get_temp_coil().f_degc());
   if (this->support.humidity) {
-    ESP_LOGD(TAG, "  Humid: %" PRIu8 "%%", this->get_humidity());
+    ESP_LOGD(TAG, "Humid: %" PRIu8 "%%", this->get_humidity());
   }
-  ESP_LOGD(TAG, " Demand: %" PRIu8, this->get_demand());
-  ESP_LOGD(TAG, " Cycle Time: %" PRIu32 "ms", this->cycle_time_ms);
-  ESP_LOGD(TAG, " UnitState: %" PRIX8 " SysState: %02" PRIX8, this->current.unit_state.raw, this->current.system_state.raw);
+  ESP_LOGD(TAG, "Cycle Time: %" PRIu32 "ms  UnitState: %" PRIX8 "  SysState: %02" PRIX8,
+      this->cycle_time_ms,
+      this->current.unit_state.raw,
+      this->current.system_state.raw);
   if (this->debug) {
     const auto comma_join = [](const auto& queries) {
       std::string str;

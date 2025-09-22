@@ -168,9 +168,9 @@ your assistance with this project would be helpful. Here are some possible
 ways:
 
 * Report your experince with different Daikin units. Turning on protocol
-  debugging and getting the protocol detection output values would be the first
-  step if you encounter issues and help me learn more about the output of
-  different models.
+  debugging and getting the protocol and model detection output values would be
+  the first step if you encounter issues and help me learn more about the
+  output of different models.
 * Let me know how useful the binary sensor values are and which just shadow
   other sensor values.
 * If you have a revk module with an inverting RX pin, let me know if using a
@@ -234,6 +234,7 @@ uart:
 # The parent UART communication hub platform.
 daikin_s21:
   uart: s21_uart
+  # debug_protocol: true  # please enable when reporting logs!
   # update_interval: 15s  # also supports periodic polling instead of more responsive free run
 
 climate:

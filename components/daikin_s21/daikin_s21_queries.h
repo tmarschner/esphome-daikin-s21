@@ -87,7 +87,7 @@ namespace EnvironmentQuery {
   inline constexpr std::string_view LouvreAngleSetpoint{"RM"};
   inline constexpr std::string_view VerticalSwingAngle{"RN"};
   inline constexpr std::string_view RW{"RW"};
-  inline constexpr std::string_view TargetTemperature{"RX"}; // (not set point, see details)
+  inline constexpr std::string_view TargetTemperature{"RX"}; // (not user setpoint, see details)
   inline constexpr std::string_view OutsideTemperature{"Ra"};
   inline constexpr std::string_view IndoorFrequencyCommandSignal{"Rb"};
   inline constexpr std::string_view CompressorFrequency{"Rd"};
@@ -95,6 +95,7 @@ namespace EnvironmentQuery {
   inline constexpr std::string_view CompressorOnOff{"Rg"};
   inline constexpr std::string_view UnitState{"RzB2"};
   inline constexpr std::string_view SystemState{"RzC3"};
+  inline constexpr std::string_view Rz{"Rz"};
   inline constexpr std::string_view Rz52{"Rz52"};
   inline constexpr std::string_view Rz72{"Rz72"};
 } // namespace EnvironmentQuery
