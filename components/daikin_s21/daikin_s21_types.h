@@ -59,6 +59,16 @@ inline constexpr DaikinC10 TEMPERATURE_STEP{0.5F}; // Daikin temperature sensor 
 inline constexpr DaikinC10 TEMPERATURE_INVALID{DaikinC10::nan_sentinel}; // NaN
 
 /**
+ * Possible sources of active flag.
+ */
+enum class ActiveSource : uint8_t {
+  Unknown,
+  CompressorOnOff,  // directly read from query
+  UnitState,        // interpreted from unit state bitfield
+  Unsupported,      // hardcoded to active
+};
+
+/**
  * Unit state (RzB2) bitfield decoder
  */
 class DaikinUnitState {
@@ -93,5 +103,17 @@ struct DaikinClimateSettings {
 
   constexpr bool operator==(const DaikinClimateSettings &other) const = default;
 };
+
+// MiscQuery::Model or StateQuery::ModelCode responses, reversed ascii hex (these are byte swapped from controller response)
+using DaikinModel = uint16_t;
+inline constexpr DaikinModel ModelUnknown{0xFFFF};
+
+// V0 outdoor units?
+inline constexpr DaikinModel ModelRXB35C2V1B{0x2806}; // indoor FTXB25C2V1B
+inline constexpr DaikinModel Model4MXL36TVJU{0x35E3}; // indoor CTXS07LVJU, FTXS12LVJU, FTXS15LVJU
+inline constexpr DaikinModel ModelRXC24AXVJU{0x4431}; // indoor FTXC24AXVJU
+
+// V2+ indoor units
+inline constexpr DaikinModel ModelFTXC24AXVJU{0x0B66};  // outdoor RXC24AXVJU
 
 } // namespace esphome::daikin_s21

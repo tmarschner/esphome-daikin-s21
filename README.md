@@ -1,15 +1,19 @@
 # esphome-daikin-s21
 
-ESPHome component to control Daikin indoor mini-split units with s21 ports.
+ESPHome component to control Daikin indoor mini-split units using the wired
+protocol available over S21 and related ports.
 
-Many thanks to the work by [revk][1] on the fantastic [Faikin][2] project,
-which was the primary inspiration and guide for building this ESPHome
-component. In addition, the very active and resourceful community that
-project has fostered that has decoded much of the protocol.
-
-A huge thanks to [joshbenner][4], the original author of this integration.
-His [repository][5] would be my preferred place to commit patches to avoid
-fragmentation, but he lacks the time at the moment to manage the project.
+A big thanks to:
+* [revk](https://github.com/revk) for work on the fantastic
+  [Faikin](https://github.com/revk/ESP32-Faikin) project, which was the primary
+  inspiration and guide for building this ESPHome component. In addition, the
+  very active and resourceful community that project has fostered that has
+  decoded much of the protocol.
+* [joshbenner](https://github.com/joshbenner), the original author of this
+  integration. His [repository](https://github.com/joshbenner/esphome-daikin-s21)
+  would be my preferred place to commit patches to avoid fragmentation, but he
+  lacks the time at the moment to manage the project.
+* The users of this project who have contributed, tested or offered feedback.
 
 ## Features
 
@@ -21,6 +25,7 @@ fragmentation, but he lacks the time at the moment to manage the project.
 * Fan modes auto, silent and 1-5.
 * Swing modes horizontal, vertical, and both.
 * Untested support for Powerful and Econo presets ("Boost" and "Eco").
+  My unit doesn't support these over the wired protocol.
 * Optional humidity reporting.
 * Limits for commanded setpoints. Defaults should work fine, but if your
   unit is different they can be overridden.
@@ -32,14 +37,16 @@ The standard Daikin control loop has a few deficiencies:
   a wall unit placed higher in a room. This reading doesn't always reflect
   the temperature felt by occupants.
 
-Because of these, the climate component implements a separate loop on top
-of the Daikin internal one. An external temperature sensor can be used
-to provide a more accurate and precise reference and an offset applied to
-the internal Daikin setpoint. The internal temperature sensor can also be
-used for this functionality to drive the coarse setpoint around the more
-granular temperature sensor. The rate at which this secondary loop runs
-is configurable. All of this is downstream of Daikin's reported temperature
-precision and control loop hysteresis, so it's not ideal.
+Because of these, the climate component implements a separate loop on top of
+the Daikin internal one. An external temperature sensor can be used to provide
+a more accurate and precise reference and an offset applied to the internal
+Daikin setpoint. The internal temperature sensor can also be used for this
+functionality to drive the coarse setpoint around the more granular
+temperature sensor. The rate at which this secondary loop runs must be
+configured with the update interval when using this mode. All of this is
+downstream of Daikin's reported temperature precision and relatively broad
+control loop hysteresis, so it's far from ideal but can compensate for a
+difference in temperature between the unit and your space.
 
 ### Sensor
 * Inside temperature (usually measured at indoor air handler return)
@@ -48,9 +55,9 @@ precision and control loop hysteresis, so it's not ideal.
 * Fan speed
 * Vertical swing angle (directional flap)
 * Compressor frequency (outside exchanger)
-* Humidity (not supported on all units, will report a consistent 50% if
+* Humidity (not supported on all units, can report a consistent 50% if
   not present)
-* Unit demand from outside exchanger
+* Unit's demand from outside exchanger
 
 ### Binary Sensor
 
@@ -80,53 +87,79 @@ SDK anyways). See the framework selection in the configuration example.
 * Powerful and econo modes are untested (no v2 hardware).
 * Does not support comfort or presence detection features on some models.
 * Does not interact with the indoor units schedules (do that with HA instead).
-* Currently targets Version 0 protocol support due to the equipment available
-  to the author.
+* Higher protocol versions have limited support due to the equipment available
+  to me, though I'm happy to try to work with you.
+* Daikin's internal R&D departments must be a bit chaotic. The latest models
+  might have inferior command sets to those released years ago.
 
 ## Hardware
 
-### S21 Port
+Please see the Faikin [wiring](https://github.com/revk/ESP32-Faikin/wiki/Wiring)
+page for detailed documentation including pinouts, alternate connectors with
+images. The below is just a quick reference overview.
 
-**NOTE:** The Daikin S21 port provides >5V, so if you intend to power your
-board on this pin, be sure to test its output and regulate voltage accordingly.
+**NOTE:** The Daikin connector's Vcc provides >5V, so if you intend to power
+your board with this pin, be sure to test its output and regulate voltage
+accordingly. Mine supplies 14.5V.
+
+For communications pins, I found mine pulled up internally to 5V by the Daikin
+board. I've read some users don't see this, so verify with a multimeter. You may
+need to add your own external pullups or make use of a level shifting circuit.
+Cheap level shifter modules are available that can make use of the provided 5V
+reference to do this if you'd prefer. If you are powering your device
+externally you should still connect a ground reference for the communications.
+
+### S21 Port
 
 On my Daikin units, the S21 port has the following pins:
 
-* 1 - Unused
-* 2 - TX (5V)
-* 3 - RX (5V)
-* 4 - VCC (>5V!!)
-* 5 - GND
+1. Vref (5V) Reference for communications, not to be used for powering your
+  device. Sometimes N/C.
+2. TX (5V)
+3. RX (5V)
+4. Vcc (>5V!)
+5. GND
 
 The S21 plug is JST `EHR-5` and related header `B5B-EH-A(LF)(SN)`, though the
-plug pins are at standard 2.5mm pin header widths.
+plug pins are at standard 2.5mm pin header widths. I was able to locate headers
+and precrimped wire leads on Aliexpress for a low cost.
+
+### S403 Port
+
+The project has been reported to work on a unit with the S403 connecter as
+This has the same communication interface with a little additional
+functionality, and most importantly to note, mains voltage exposed on a pin.
+Do not connect anything to pin 10. Don't populate it in your plug.
+
+1. Vcc (>5V!)
+2. JEM-A OUT (pull down = ON)
+3. JEM-A IN (pull down = toggle switch)
+4. TX (5V)
+5. RX (5V)
+6. GND
+7. GND
+8. N/C
+9. N/C
+10. ~327 VDC (Dangerous!)
+
+Housing: JST `XAP-10V-1`
+Contacts: JST `SXA-001T-P0.6`
 
 ### PCB Option 1
 
-joshbenner uses the board designed by [revk][1] available [here][3]. Note that
-revk's design includes a FET that inverts the logic levels on the ESP's RX pin,
-which required using two separate UART devices to get around an ESPHome limit
-on having pins inverted differently using the Arduino framework. This handling
-is now moved behind the split_uart component.
+joshbenner uses the board designed by revk available [here](https://github.com/revk/ESP32-Faikin/tree/main/PCB/Faikin).
+Note that revk's design includes a FET that inverts the logic levels on the
+ESP's RX pin, which required using two separate UART devices to get around an
+ESPHome limit on having pins inverted differently using the Arduino framework.
+This handling is now moved behind the provided split_uart component.
 
 ### PCB Option 2
 
-I am instead using ESP32-S3 mini dev boards and directly wiring communication
-to the S21 port. The Daikin unit pulls our TX line up to 5V, so the pin should
-be configured as open drain. Instead of driving the line to 0V, it shorts it to
-ground through their external pullup resistor. Your Daikin unit may not have
-this pullup and may need to be added externally to your circuit. Alternatively
-there are cheap level shifter modules available where conventionally driven
-outputs will work. The RX line relies on the ESP32's 5V tolerant GPIO pins.
-Communication works reliably for me. For power I am using a cheap 5V -> 3.3V
-switching module wired into Vcc on the dev board. Don't forget to wire up
-ground as well.
-
-[1]: https://github.com/revk
-[2]: https://github.com/revk/ESP32-Faikin
-[3]: https://github.com/revk/ESP32-Faikin/tree/main/PCB/Faikin
-[4]: https://github.com/joshbenner
-[5]: https://github.com/joshbenner/esphome-daikin-s21
+I am using ESP32-S3 mini dev boards and directly wiring communication to the
+S21 port. My Daikin unit pulls our TX line up to 5V, so I've configured my pin
+as open drain to work with it. The RX line relies on the ESP32's 5V tolerant
+GPIO pins. For power I am using a cheap 5V -> 3.3V switching module wired into
+Vcc on the dev board.
 
 ## Contributing
 
@@ -135,9 +168,9 @@ your assistance with this project would be helpful. Here are some possible
 ways:
 
 * Report your experince with different Daikin units. Turning on protocol
-  debugging and getting the protocol detection output values would be the first
-  step if you encounter issues and help me learn more about the output of
-  different models.
+  debugging and getting the protocol and model detection output values would be
+  the first step if you encounter issues and help me learn more about the
+  output of different models.
 * Let me know how useful the binary sensor values are and which just shadow
   other sensor values.
 * If you have a revk module with an inverting RX pin, let me know if using a
@@ -145,6 +178,13 @@ ways:
   works with ESP-IDF and (when it's working again) the Arduino framework. i.e.
   Not using the split_uart component. If so, I can remove this custom code and
   simplify configuration.
+
+Please consider documenting characteristics of your unit in the appropriate
+place in the Faikin wiki. I don't want to make an inferior copy of this
+information if possible. Please don't report issues with this component to them
+as we don't share a codebase. Some of the readout values here are not
+byteswapped if we don't otherwise use them so unknown static fields may appear
+reversed compared to that project. Please verify this when contributing.
 
 See existing issues, open a new one or post in the discussions section with
 your findings. Thanks.
@@ -194,6 +234,7 @@ uart:
 # The parent UART communication hub platform.
 daikin_s21:
   uart: s21_uart
+  # debug_protocol: true  # please enable when reporting logs!
   # update_interval: 15s  # also supports periodic polling instead of more responsive free run
 
 climate:
@@ -219,7 +260,7 @@ climate:
     humidity_sensor: daikin_humidity  # Internal, see humidity sensor below
     # humidity_sensor: room_humidity  # External, see homeassistant sensor below
     # or leave unconfigured if unsupported to omit reporting
-    update_interval: 60s # Interval used to adjust the unit's setpoint using finer grained control
+    # update_interval: 60s # Interval used to adjust the unit's setpoint using finer grained control
     # Daikin supported temperature range setpoints. Defaults should be fine unless your unit differs (see your manual):
     # max_temperature: 32 # maximum setpoint when cool
     # max_heat_temperature: 30  # maximum setpoint when heat or heat_cool
