@@ -92,6 +92,20 @@ uint8_t climate_swing_mode_to_daikin(const climate::ClimateSwingMode mode) {
   }
 }
 
+const char * active_source_to_string(const ActiveSource source) {
+  switch (source) {
+    case ActiveSource::CompressorOnOff:
+      return "Rg";
+    case ActiveSource::UnitState:
+      return "unit state";
+    case ActiveSource::Unsupported:
+      return "assumed on";
+    case ActiveSource::Unknown:
+    default:
+      return "undetected";
+  }
+}
+
 int16_t bytes_to_num(std::span<const uint8_t> bytes) {
   // <ones><tens><hundreds[><neg/pos>,<thousands>]
   int16_t val = 0;
@@ -466,8 +480,7 @@ void DaikinS21::refine_queries() {
     // handle results
     this->ready[ReadyActiveSource] = (this->support.active_source != ActiveSource::Unknown);
     if (this->ready[ReadyActiveSource]) {
-      ESP_LOGD(TAG, "Active source is %s",
-          std::array{"undetected","Rg","unit state","assumed on"}[static_cast<uint8_t>(this->support.active_source)]);
+      ESP_LOGD(TAG, "Active source is %s", active_source_to_string(this->support.active_source));
     }
   }
 }
@@ -964,10 +977,11 @@ void DaikinS21::dump_state() {
     const auto features = this->get_query_result(StateQuery::OptionalFeatures);
     const auto v2_features = this->get_query_result(StateQuery::V2OptionalFeatures);
     const auto ft_capacity = this->get_query_result(StateQuery::FT);
-    ESP_LOGD(TAG, " G2: %s  GK: %s  GT: %s",
+    ESP_LOGD(TAG, " G2: %s  GK: %s  GT: %s  ActiveSrc: %s",
         features.ack ? hex_repr(features.value).c_str() : str_repr(features.value).c_str(),
         v2_features.ack ? hex_repr(v2_features.value).c_str() : str_repr(v2_features.value).c_str(),
-        ft_capacity.ack ? hex_repr(ft_capacity.value).c_str() : str_repr(ft_capacity.value).c_str());
+        ft_capacity.ack ? hex_repr(ft_capacity.value).c_str() : str_repr(ft_capacity.value).c_str(),
+        active_source_to_string(this->support.active_source));
   }
   ESP_LOGD(TAG, "Mode: %s  Action: %s  Preset: %s  Demand: %" PRIu8,
       LOG_STR_ARG(climate::climate_mode_to_string(this->current.climate.mode)),
