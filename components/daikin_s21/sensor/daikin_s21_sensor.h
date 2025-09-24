@@ -10,8 +10,13 @@ namespace esphome::daikin_s21 {
 class DaikinS21Sensor : public PollingComponent,
                         public Parented<DaikinS21> {
  public:
+  void setup() override;
+  void loop() override;
   void update() override;
   void dump_config() override;
+
+  void update_handler();
+  void publish_sensors();
 
   void set_temp_inside_sensor(sensor::Sensor *sensor) {
     this->temp_inside_sensor_ = sensor;
@@ -48,6 +53,8 @@ class DaikinS21Sensor : public PollingComponent,
   }
 
  protected:
+  bool is_free_run() const { return this->get_update_interval() == 0; }
+
   sensor::Sensor *temp_inside_sensor_{};
   sensor::Sensor *temp_target_sensor_{};
   sensor::Sensor *temp_outside_sensor_{};

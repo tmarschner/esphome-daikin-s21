@@ -135,7 +135,7 @@ void DaikinS21::setup() {
   this->static_queries = {};
   this->protocol_version = ProtocolUndetected;
   this->ready.reset();
-  this->start_poller();
+  this->start_poller(); // for reinit
   this->disable_loop();
 }
 
@@ -591,13 +591,8 @@ void DaikinS21::handle_serial_idle() {
     } else {
       this->current.climate.preset = climate::CLIMATE_PRESET_NONE;
     }
-    // signal there's fresh data
-    if (this->binary_sensor_callback) {
-      this->binary_sensor_callback();
-    }
-    if (this->climate_callback) {
-      this->climate_callback();
-    }
+    // signal there's fresh data to consumers
+    this->update_callbacks.call();
   }
 
   if ((now - last_state_dump_ms) > (60 * 1000)) { // every minute
