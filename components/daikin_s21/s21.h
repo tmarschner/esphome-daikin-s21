@@ -28,8 +28,8 @@ class DaikinS21 : public PollingComponent {
   // external command action
   void set_climate_settings(const DaikinClimateSettings &settings);
 
-  std::function<void(void)> binary_sensor_callback{};
-  std::function<void(void)> climate_callback{};
+  // callbacks called when a query cycle is complete
+  CallbackManager<void(void)> update_callbacks{};
 
   // value accessors
   bool is_ready() { return this->ready.all(); }

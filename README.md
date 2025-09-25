@@ -49,9 +49,20 @@ control loop hysteresis, so it's far from ideal but can compensate for a
 difference in temperature between the unit and your space.
 
 ### Sensor
+
+Sensors in ESPHome are geared more towards an ADC value that can be filtered
+as necessary. The values read from the Daikin unit are pre-processed and won't
+normally require averaging filters and the like. The sensor component supports
+a configurable update interval that will publish the current values
+periodically. To make this reporting more responsive, the user can set this
+value to zero and every update from the unit, interesting or not, will be
+published. To reduce spam, please configure a delta filter on your sensors and
+only changes will be published over the network. See the example configuration.
+
 * Inside temperature (usually measured at indoor air handler return)
 * Outside temperature (outside exchanger)
 * Coil temperature (indoor air handler's coil)
+* Target temperature (internal setpoint, modified by special modes)
 * Fan speed
 * Vertical swing angle (directional flap)
 * Compressor frequency (outside exchanger)
@@ -59,10 +70,16 @@ difference in temperature between the unit and your space.
   not present)
 * Unit's demand from outside exchanger
 
+v2 protocol units may also support:
+
+* IR counter that increments when the remote is used (untested)
+* Total power consumption in kWh (untested)
+
 ### Binary Sensor
 
 New, extracted from the unit and system state bitfields. Still need to observe
 to see how valuable these are. I may remove the redundant ones in the future.
+Not all units support these.
 
 * Powerful
 * Defrost
@@ -270,32 +287,52 @@ climate:
 # Optional additional sensors.
 sensor:
   - platform: daikin_s21
+    update_interval: 0s
     inside_temperature:
       name: Inside Temperature
+      filters:
+        - delta: 0.0
     outside_temperature:
       name: Outside Temperature
       device_id: daikin_outdoor
+      filters:
+        - delta: 0.0
     coil_temperature:
       name: Coil Temperature
+      filters:
+        - delta: 0.0
     fan_speed:
       name: Fan Speed
+      filters:
+        - delta: 0.0
     swing_vertical_angle:
       name: Swing Vertical Angle
+      filters:
+        - delta: 0.0
     compressor_frequency:
       name: Compressor Frequency
       device_id: daikin_outdoor
+      filters:
+        - delta: 0.0
     humidity:
       id: daikin_humidity
       name: Humidity
+      filters:
+        - delta: 0.0
     demand:
       name: Demand  # 0-15 demand units, use filter to map to %
       filters:
         - multiply: !lambda return 100.0F / 15.0F;
+        - delta: 0.0
     # Protocol Version 2:
     ir_counter:
       name: IR Counter
+      filters:
+        - delta: 0.0
     power_consumption:
       name: Power Consumption
+      filters:
+        - delta: 0.0
   # optional external reference sensors
   - platform: homeassistant
     id: room_temp

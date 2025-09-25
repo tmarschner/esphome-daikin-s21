@@ -70,7 +70,7 @@ void DaikinS21Climate::setup() {
   // initialize setpoint, will be loaded from preferences or unit shortly
   this->target_temperature = NAN;
   // enable event driven updates
-  this->get_parent()->climate_callback = std::bind(&DaikinS21Climate::update_handler, this); // enable update events from DaikinS21
+  this->get_parent()->update_callbacks.add(std::bind(&DaikinS21Climate::update_handler, this)); // enable update events from DaikinS21
   // allow loop() to execute once to capture the current state (change detection on update requires a "previous" state)
 }
 
