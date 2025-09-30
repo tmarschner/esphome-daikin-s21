@@ -39,7 +39,7 @@ protected:
   static constexpr uint32_t ack_delay_period_ms{45};      // official remote delay time before ACKing a response
   static constexpr uint32_t next_tx_delay_period_ms{35};  // official remote delay time between commands
   static constexpr uint32_t error_delay_period_ms{3000};  // cooldown time when something goes wrong
-  static constexpr uint32_t rx_timout_period_ms{500};     // waiting for a response from the unit
+  static constexpr uint32_t rx_timout_period_ms{250};     // waiting for a response from the unit
 
   enum class CommState : uint8_t {
     CommandAck,
