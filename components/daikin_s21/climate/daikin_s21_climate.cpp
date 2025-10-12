@@ -100,28 +100,30 @@ void DaikinS21Climate::loop() {
     bool do_publish = false;
     bool update_unit_setpoint = false;
 
-    // Detect and integrate new sensor values into component state
+    // Detect and integrate new values into component state
     const float current_temperature = this->get_current_temperature().f_degc();
     const float current_humidity = this->get_current_humidity();
-    if ((this->action != this->get_parent()->get_climate_action()) ||
+    if ((this->mode != reported.mode) ||
+        (this->action != this->get_parent()->get_climate_action()) ||
         (this->current_temperature != current_temperature) ||
-        (std::isfinite(current_humidity) && (this->current_humidity != current_humidity))) {
+        (std::isfinite(current_humidity) && (this->current_humidity != current_humidity))||
+        (this->swing_mode != reported.swing) ||
+        (this->preset != reported.preset)) {
+      this->mode = reported.mode;
       this->action = this->get_parent()->get_climate_action();
       this->current_temperature = current_temperature;
       this->current_humidity = current_humidity;
+      this->swing_mode = reported.swing;
+      this->preset = reported.preset;
+      do_publish = true;
+    }
+    if (this->commanded.fan != reported.fan) {
+      this->set_custom_fan_mode(reported.fan);   // avoid custom string operations until there's a change that requires publishing
       do_publish = true;
     }
 
-    // update component state
-    this->mode = reported.mode;
-    this->swing_mode = reported.swing;
-    if (this->commanded.fan != reported.fan) {
-      this->set_custom_fan_mode(reported.fan);   // avoid custom string operations until there's a change that requires publishing
-    }
-    this->preset = reported.preset;
-
-    // update component setpoint
-    if (is_setpoint_mode(reported.mode)) {
+    // Update component target temperature
+    if (is_setpoint_mode(mode)) {
       // Target temperature is stored by climate class, and is used to represent
       // the user's desired temperature. This is distinct from the HVAC unit's
       // setpoint because we may be using an external sensor. So we only update
