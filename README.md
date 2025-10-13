@@ -132,8 +132,8 @@ On my Daikin units, the S21 port has the following pins:
 
 1. Vref (5V) Reference for communications, not to be used for powering your
   device. Sometimes N/C.
-2. TX (5V)
-3. RX (5V)
+2. TX (5V) Daikin Tx, ESPHome Rx
+3. RX (5V) Daikin Rx, ESPHome Tx
 4. Vcc (>5V!)
 5. GND
 
@@ -151,8 +151,8 @@ Do not connect anything to pin 10. Don't populate it in your plug.
 1. Vcc (>5V!)
 2. JEM-A OUT (pull down = ON)
 3. JEM-A IN (pull down = toggle switch)
-4. TX (5V)
-5. RX (5V)
+4. TX (5V) Daikin Tx, ESPHome Rx
+5. RX (5V) Daikin Rx, ESPHome Tx
 6. GND
 7. GND
 8. N/C
