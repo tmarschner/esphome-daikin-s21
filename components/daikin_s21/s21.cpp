@@ -1012,9 +1012,9 @@ void DaikinS21::dump_state() {
       }
       return str;
     };
-    ESP_LOGD(TAG, LOG_STR_ARG((" Active: " + comma_join(std::views::transform(this->queries, DaikinQueryState::GetCommand))).c_str()));
-    ESP_LOGD(TAG, LOG_STR_ARG(("  Nak'd: " + comma_join(this->failed_queries)).c_str()));
-    ESP_LOGD(TAG, LOG_STR_ARG((" Static: " + comma_join(std::views::transform(this->static_queries, DaikinQueryState::GetCommand))).c_str()));
+    ESP_LOGD(TAG, " Active: %s", LOG_STR_ARG(comma_join(std::views::transform(this->queries, DaikinQueryState::GetCommand)).c_str()));
+    ESP_LOGD(TAG, "  Nak'd: %s", LOG_STR_ARG(comma_join(this->failed_queries).c_str()));
+    ESP_LOGD(TAG, " Static: %s", LOG_STR_ARG(comma_join(std::views::transform(this->static_queries, DaikinQueryState::GetCommand)).c_str()));
   }
 }
 
