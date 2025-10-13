@@ -58,6 +58,8 @@ class SplitUART : public uart::UARTComponent, public Component {
   }
 
  protected:
+  void check_logger_conflict() override {}  // conflicts will be caught in subcomponent calls
+
   uart::UARTComponent *tx{};
   uart::UARTComponent *rx{};
 };
