@@ -22,21 +22,19 @@ DaikinSerial = daikin_s21_ns.class_("DaikinSerial", cg.Component)
 uart_ns = cg.esphome_ns.namespace("uart")
 UARTComponent = uart_ns.class_("UARTComponent")
 
-CONFIG_SCHEMA = cv.Schema(
-    {
-        cv.GenerateID(): cv.declare_id(DaikinS21),
-        cv.GenerateID(CONF_DAIKIN_SERIAL_ID): cv.declare_id(DaikinSerial),
-        cv.Required(CONF_UART): cv.use_id(UARTComponent),
-        cv.Optional(CONF_DEBUG_COMMS, default=False): cv.boolean,
-        cv.Optional(CONF_DEBUG_PROTOCOL, default=False): cv.boolean,
-    }
-).extend(cv.polling_component_schema("0s"))
-
-S21_PARENT_SCHEMA = cv.Schema(
-    {
-        cv.GenerateID(CONF_S21_ID): cv.use_id(DaikinS21),
-    }
+CONFIG_SCHEMA = (
+    cv.COMPONENT_SCHEMA
+    .extend({cv.GenerateID(): cv.declare_id(DaikinS21)})
+    .extend(cv.polling_component_schema("0s"))
+    .extend({
+      cv.GenerateID(CONF_DAIKIN_SERIAL_ID): cv.declare_id(DaikinSerial),
+      cv.Required(CONF_UART): cv.use_id(UARTComponent),
+      cv.Optional(CONF_DEBUG_COMMS, default=False): cv.boolean,
+      cv.Optional(CONF_DEBUG_PROTOCOL, default=False): cv.boolean,
+    })
 )
+
+S21_PARENT_SCHEMA = cv.Schema({cv.GenerateID(CONF_S21_ID): cv.use_id(DaikinS21)})
 
 async def to_code(config):
     uart = await cg.get_variable(config[CONF_UART])

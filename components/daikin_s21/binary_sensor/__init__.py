@@ -34,36 +34,35 @@ CONF_SYSTEM_DEFROST = "system_defrost"
 CONF_MULTIZONE_CONFLICT = "multizone_conflict"
 
 CONFIG_SCHEMA = (
-    cv.COMPONENT_SCHEMA.extend(
-        {
-            cv.GenerateID(): cv.declare_id(DaikinS21BinarySensor),
-            cv.Optional(CONF_POWERFUL): binary_sensor.binary_sensor_schema(
-                device_class=DEVICE_CLASS_POWER,
-            ),
-            cv.Optional(CONF_DEFROST): binary_sensor.binary_sensor_schema(
-                device_class=DEVICE_CLASS_COLD,
-            ),
-            cv.Optional(CONF_ACTIVE): binary_sensor.binary_sensor_schema(
-                device_class=DEVICE_CLASS_RUNNING,
-            ),
-            cv.Optional(CONF_ONLINE): binary_sensor.binary_sensor_schema(
-                device_class=DEVICE_CLASS_POWER,
-            ),
-            cv.Optional(CONF_VALVE): binary_sensor.binary_sensor_schema(
-                device_class=DEVICE_CLASS_OPENING,
-            ),
-            cv.Optional(CONF_SHORT_CYCLE): binary_sensor.binary_sensor_schema(
-                device_class=DEVICE_CLASS_LOCK,
-            ),
-            cv.Optional(CONF_SYSTEM_DEFROST): binary_sensor.binary_sensor_schema(
-                device_class=DEVICE_CLASS_COLD,
-            ),
-            cv.Optional(CONF_MULTIZONE_CONFLICT): binary_sensor.binary_sensor_schema(
-                device_class=DEVICE_CLASS_LOCK,
-            ),
-        }
-    )
+    cv.COMPONENT_SCHEMA
+    .extend({cv.GenerateID(): cv.declare_id(DaikinS21BinarySensor)})
     .extend(S21_PARENT_SCHEMA)
+    .extend({
+        cv.Optional(CONF_POWERFUL): binary_sensor.binary_sensor_schema(
+            device_class=DEVICE_CLASS_POWER,
+        ),
+        cv.Optional(CONF_DEFROST): binary_sensor.binary_sensor_schema(
+            device_class=DEVICE_CLASS_COLD,
+        ),
+        cv.Optional(CONF_ACTIVE): binary_sensor.binary_sensor_schema(
+            device_class=DEVICE_CLASS_RUNNING,
+        ),
+        cv.Optional(CONF_ONLINE): binary_sensor.binary_sensor_schema(
+            device_class=DEVICE_CLASS_POWER,
+        ),
+        cv.Optional(CONF_VALVE): binary_sensor.binary_sensor_schema(
+            device_class=DEVICE_CLASS_OPENING,
+        ),
+        cv.Optional(CONF_SHORT_CYCLE): binary_sensor.binary_sensor_schema(
+            device_class=DEVICE_CLASS_LOCK,
+        ),
+        cv.Optional(CONF_SYSTEM_DEFROST): binary_sensor.binary_sensor_schema(
+            device_class=DEVICE_CLASS_COLD,
+        ),
+        cv.Optional(CONF_MULTIZONE_CONFLICT): binary_sensor.binary_sensor_schema(
+            device_class=DEVICE_CLASS_LOCK,
+        ),
+    })
 )
 
 async def to_code(config):

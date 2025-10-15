@@ -58,7 +58,7 @@ protected:
   uart::UARTComponent &uart;
   bool debug{};
   CommState comm_state{};
-  std::vector<uint8_t> response{MAX_RESPONSE_SIZE};
+  std::vector<uint8_t> response = std::vector<uint8_t>(MAX_RESPONSE_SIZE);
 };
 
 } // namespace esphome::daikin_s21

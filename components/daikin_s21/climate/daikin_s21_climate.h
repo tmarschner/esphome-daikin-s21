@@ -21,8 +21,8 @@ class DaikinS21Climate : public climate::Climate,
   void control(const climate::ClimateCall &call) override;
   void update_handler();
 
-  void set_supported_modes_override(std::set<climate::ClimateMode> modes);
-  void set_supported_presets_override(std::set<climate::ClimatePreset> presets);
+  void set_supported_modes(std::set<climate::ClimateMode> modes);
+  void set_supported_presets(std::set<climate::ClimatePreset> presets);
   void set_temperature_reference_sensor(sensor::Sensor *sensor) { this->temperature_sensor_ = sensor; }
   void set_humidity_reference_sensor(sensor::Sensor *sensor);
   void set_max_cool_temperature(DaikinC10 temperature) { this->max_cool_temperature = temperature; };
