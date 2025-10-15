@@ -20,7 +20,6 @@ void DaikinSerial::setup() {
   this->uart.set_stop_bits(2);
   this->uart.set_data_bits(8);
   this->uart.set_parity(uart::UART_CONFIG_PARITY_EVEN);
-  this->uart.load_settings();
   // start idle, wait for updates
   this->disable_loop();
 }
