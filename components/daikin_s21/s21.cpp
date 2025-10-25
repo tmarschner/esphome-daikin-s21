@@ -503,7 +503,7 @@ void DaikinS21::send_command(const std::string_view command, const std::span<con
  * - Start the next cycle if free running or triggered in polling mode
  */
 void DaikinS21::handle_serial_idle() {
-  PayloadBuffer payload;
+  std::array<uint8_t, 4U> payload;  // all command payloads here are 4 bytes long for now
 
   // Apply any pending settings
   // Important to clear the activate flag here as another command can be queued while waiting for this one to complete

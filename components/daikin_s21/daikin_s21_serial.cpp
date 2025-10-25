@@ -16,10 +16,6 @@ static constexpr uint8_t ACK{6};
 static constexpr uint8_t NAK{21};
 
 void DaikinSerial::setup() {
-  this->uart.set_baud_rate(2400);
-  this->uart.set_stop_bits(2);
-  this->uart.set_data_bits(8);
-  this->uart.set_parity(uart::UART_CONFIG_PARITY_EVEN);
   // start idle, wait for updates
   this->disable_loop();
 }

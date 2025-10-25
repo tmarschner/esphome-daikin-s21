@@ -47,17 +47,6 @@ void DaikinS21Climate::setup() {
   } else {
     this->traits_.set_visual_current_temperature_step(TEMPERATURE_STEP.f_degc());
   }
-  if (this->traits_.get_supported_modes().empty()) {
-    // populate default modes if not already overridden by user config
-    this->traits_.set_supported_modes({
-        climate::CLIMATE_MODE_OFF,
-        climate::CLIMATE_MODE_HEAT_COOL,
-        climate::CLIMATE_MODE_COOL,
-        climate::CLIMATE_MODE_HEAT,
-        climate::CLIMATE_MODE_FAN_ONLY,
-        climate::CLIMATE_MODE_DRY,
-    });
-  }
   std::array<std::string, std::size(supported_daikin_fan_modes)> supported_fan_mode_strings;
   std::ranges::transform(supported_daikin_fan_modes, supported_fan_mode_strings.begin(), [](const auto &arg){ return daikin_fan_mode_to_string_view(arg); } );
   this->traits_.set_supported_custom_fan_modes({supported_fan_mode_strings.begin(), supported_fan_mode_strings.end()});
@@ -244,9 +233,8 @@ void DaikinS21Climate::dump_config() {
  *
  * @note Modifies traits, call during setup only
  */
-void DaikinS21Climate::set_supported_modes_override(std::set<climate::ClimateMode> modes) {
+void DaikinS21Climate::set_supported_modes(std::set<climate::ClimateMode> modes) {
   this->traits_.set_supported_modes(modes);
-  this->traits_.add_supported_mode(climate::CLIMATE_MODE_OFF);   // Always available
 }
 
 /**
@@ -254,9 +242,8 @@ void DaikinS21Climate::set_supported_modes_override(std::set<climate::ClimateMod
  *
  * @note Modifies traits, call during setup only
  */
-void DaikinS21Climate::set_supported_presets_override(std::set<climate::ClimatePreset> presets) {
+void DaikinS21Climate::set_supported_presets(std::set<climate::ClimatePreset> presets) {
   this->traits_.set_supported_presets(presets);
-  this->traits_.add_supported_preset(climate::CLIMATE_PRESET_NONE);
 }
 
 /**

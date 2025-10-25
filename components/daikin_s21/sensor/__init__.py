@@ -46,81 +46,80 @@ CONF_IR_COUNTER = "ir_counter"
 CONF_POWER_CONSUMPTION = "power_consumption"
 
 CONFIG_SCHEMA = (
-    cv.COMPONENT_SCHEMA.extend(
-        {
-            cv.GenerateID(): cv.declare_id(DaikinS21Sensor),
-            cv.Optional(CONF_INSIDE_TEMP): sensor.sensor_schema(
-                unit_of_measurement=UNIT_CELSIUS,
-                accuracy_decimals=1,
-                device_class=DEVICE_CLASS_TEMPERATURE,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
-            cv.Optional(CONF_TARGET_TEMP): sensor.sensor_schema(
-                unit_of_measurement=UNIT_CELSIUS,
-                accuracy_decimals=1,
-                device_class=DEVICE_CLASS_TEMPERATURE,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
-            cv.Optional(CONF_OUTSIDE_TEMP): sensor.sensor_schema(
-                unit_of_measurement=UNIT_CELSIUS,
-                accuracy_decimals=1,
-                device_class=DEVICE_CLASS_TEMPERATURE,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
-            cv.Optional(CONF_COIL_TEMP): sensor.sensor_schema(
-                unit_of_measurement=UNIT_CELSIUS,
-                accuracy_decimals=1,
-                device_class=DEVICE_CLASS_TEMPERATURE,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
-            cv.Optional(CONF_FAN_SPEED): sensor.sensor_schema(
-                unit_of_measurement=UNIT_REVOLUTIONS_PER_MINUTE,
-                icon=ICON_FAN,
-                accuracy_decimals=0,
-                device_class=DEVICE_CLASS_FREQUENCY,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
-            cv.Optional(CONF_SWING_VERTICAL_ANGLE): sensor.sensor_schema(
-                unit_of_measurement=UNIT_DEGREES,
-                icon="mdi:pan-vertical",
-                accuracy_decimals=0,
-                device_class=DEVICE_CLASS_WIND_DIRECTION,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
-            cv.Optional(CONF_COMPRESSOR_FREQUENCY): sensor.sensor_schema(
-                unit_of_measurement=UNIT_HERTZ,
-                icon="mdi:pump",
-                accuracy_decimals=0,
-                device_class=DEVICE_CLASS_FREQUENCY,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
-            cv.Optional(CONF_HUMIDITY): sensor.sensor_schema(
-                unit_of_measurement=UNIT_PERCENT,
-                accuracy_decimals=0,
-                device_class=DEVICE_CLASS_HUMIDITY,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
-            cv.Optional(CONF_DEMAND): sensor.sensor_schema(
-                unit_of_measurement=UNIT_PERCENT,
-                icon="mdi:thermometer-chevron-up",
-                accuracy_decimals=1,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
-            cv.Optional(CONF_IR_COUNTER): sensor.sensor_schema(
-                icon=ICON_COUNTER,
-                accuracy_decimals=0,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
-            cv.Optional(CONF_POWER_CONSUMPTION): sensor.sensor_schema(
-                unit_of_measurement=UNIT_KILOWATT_HOURS,
-                accuracy_decimals=2,
-                device_class=DEVICE_CLASS_POWER,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
-        }
-    )
-    .extend(S21_PARENT_SCHEMA)
+    cv.COMPONENT_SCHEMA
+    .extend({cv.GenerateID(): cv.declare_id(DaikinS21Sensor)})
     .extend(cv.polling_component_schema("10s"))
+    .extend(S21_PARENT_SCHEMA)
+    .extend({
+        cv.Optional(CONF_INSIDE_TEMP): sensor.sensor_schema(
+            unit_of_measurement=UNIT_CELSIUS,
+            accuracy_decimals=1,
+            device_class=DEVICE_CLASS_TEMPERATURE,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+        cv.Optional(CONF_TARGET_TEMP): sensor.sensor_schema(
+            unit_of_measurement=UNIT_CELSIUS,
+            accuracy_decimals=1,
+            device_class=DEVICE_CLASS_TEMPERATURE,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+        cv.Optional(CONF_OUTSIDE_TEMP): sensor.sensor_schema(
+            unit_of_measurement=UNIT_CELSIUS,
+            accuracy_decimals=1,
+            device_class=DEVICE_CLASS_TEMPERATURE,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+        cv.Optional(CONF_COIL_TEMP): sensor.sensor_schema(
+            unit_of_measurement=UNIT_CELSIUS,
+            accuracy_decimals=1,
+            device_class=DEVICE_CLASS_TEMPERATURE,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+        cv.Optional(CONF_FAN_SPEED): sensor.sensor_schema(
+            unit_of_measurement=UNIT_REVOLUTIONS_PER_MINUTE,
+            icon=ICON_FAN,
+            accuracy_decimals=0,
+            device_class=DEVICE_CLASS_FREQUENCY,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+        cv.Optional(CONF_SWING_VERTICAL_ANGLE): sensor.sensor_schema(
+            unit_of_measurement=UNIT_DEGREES,
+            icon="mdi:pan-vertical",
+            accuracy_decimals=0,
+            device_class=DEVICE_CLASS_WIND_DIRECTION,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+        cv.Optional(CONF_COMPRESSOR_FREQUENCY): sensor.sensor_schema(
+            unit_of_measurement=UNIT_HERTZ,
+            icon="mdi:pump",
+            accuracy_decimals=0,
+            device_class=DEVICE_CLASS_FREQUENCY,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+        cv.Optional(CONF_HUMIDITY): sensor.sensor_schema(
+            unit_of_measurement=UNIT_PERCENT,
+            accuracy_decimals=0,
+            device_class=DEVICE_CLASS_HUMIDITY,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+        cv.Optional(CONF_DEMAND): sensor.sensor_schema(
+            unit_of_measurement=UNIT_PERCENT,
+            icon="mdi:thermometer-chevron-up",
+            accuracy_decimals=1,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+        cv.Optional(CONF_IR_COUNTER): sensor.sensor_schema(
+            icon=ICON_COUNTER,
+            accuracy_decimals=0,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+        cv.Optional(CONF_POWER_CONSUMPTION): sensor.sensor_schema(
+            unit_of_measurement=UNIT_KILOWATT_HOURS,
+            accuracy_decimals=2,
+            device_class=DEVICE_CLASS_POWER,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+    })
 )
 
 async def to_code(config):

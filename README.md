@@ -96,9 +96,11 @@ Not all units support these.
 If flashed OTA you may lose communication and require a physical reflashing
 (annoying if your board in inside your air handler). Please stick to the
 ESP-IDF PlatformIO framework for now (Arduino is an extra shim over the ESP-IDF
-SDK anyways). See the framework selection in the configuration example.
+SDK anyways). See the framework selection in the configuration example. As of
+this writing, independent UART pin inversion control also wasn't possible.
 
-* This code has only been tested on ESP32 pico and ESP32-S3.
+* This code has only been tested on ESP32 pico and ESP32-S3. It compiles for
+  ESP8266.
 * Tested with 4MXL36TVJU outdoor unit and CTXS07LVJU, FTXS12LVJU, FTXS15LVJU
   indoor units.
 * Powerful and econo modes are untested (no v2 hardware).
@@ -166,9 +168,10 @@ Contacts: JST `SXA-001T-P0.6`
 
 joshbenner uses the board designed by revk available [here](https://github.com/revk/ESP32-Faikin/tree/main/PCB/Faikin).
 Note that revk's design includes a FET that inverts the logic levels on the
-ESP's RX pin, which required using two separate UART devices to get around an
-ESPHome limit on having pins inverted differently using the Arduino framework.
-This handling is now moved behind the provided split_uart component.
+ESP's RX pin, and on newer revisions the TX pin as well. When interfacing
+through a FET the RX line should be configured with a pullup. This handling
+should be supported with the ESP-IDF framework and regular ESPHome invert pin
+schema, see the example configuration.
 
 ### PCB Option 2
 
@@ -190,11 +193,6 @@ ways:
   output of different models.
 * Let me know how useful the binary sensor values are and which just shadow
   other sensor values.
-* If you have a revk module with an inverting RX pin, let me know if using a
-  single UART configuration and inverting the RX line with ESPHome's pin schema
-  works with ESP-IDF and (when it's working again) the Arduino framework. i.e.
-  Not using the split_uart component. If so, I can remove this custom code and
-  simplify configuration.
 
 Please consider documenting characteristics of your unit in the appropriate
 place in the Faikin wiki. I don't want to make an inferior copy of this
@@ -240,19 +238,22 @@ logger:
 
 external_components:
   - source: github://asund/esphome-daikin-s21@main
-    components: [ daikin_s21, split_uart ]
+    components: [ daikin_s21 ]
 
 uart:
   - id: s21_uart
     tx_pin: GPIO1
     rx_pin: GPIO3
     baud_rate: 2400
+    data_bits: 8
+    parity: EVEN
+    stop_bits: 2
 
 # The parent UART communication hub platform.
 daikin_s21:
   uart: s21_uart
   # debug_protocol: true  # please enable when reporting logs!
-  # update_interval: 15s  # also supports periodic polling instead of more responsive free run
+  # update_interval: 5s  # also supports periodic polling instead of more responsive free run
 
 climate:
   - name: My Daikin
@@ -264,21 +265,21 @@ climate:
     #     target_temperature: 1
     #     current_temperature: 0.5
     # Settings from DaikinS21Climate:
-    supported_modes:  # off is always supported
-      - heat_cool
-      - cool
-      - heat
-      - dry
-      - fan_only
-    supported_presets:  # none is always supported
-      - eco
-      - boost
+    # supported_modes:  # optional, restricts available modes. off is always supported.
+    #   - heat_cool
+    #   - cool
+    #   - heat
+    #   - dry
+    #   - fan_only
+    # supported_presets:  # optional, enables presets. none is always supported.
+    #   - eco
+    #   - boost
     # Optional sensors to use for temperature and humidity references
     # sensor: room_temp  # External, see homeassistant sensor below
     humidity_sensor: daikin_humidity  # Internal, see humidity sensor below
     # humidity_sensor: room_humidity  # External, see homeassistant sensor below
     # or leave unconfigured if unsupported to omit reporting
-    # update_interval: 60s # Interval used to adjust the unit's setpoint using finer grained control
+    # update_interval: 60s # Interval used to adjust the unit's setpoint using reference sensor
     # Daikin internal supported temperature range setpoints, used to prevent sending out of range values to the unit.
     # Defaults should be fine unless your unit differs (see your manual):
     # max_cool_temperature: 32 # maximum setpoint when cool
@@ -368,36 +369,31 @@ binary_sensor:
       device_id: daikin_outdoor
 ```
 
-Here is an example of how daikin_s21 can be used with one inverted UART pin:
+Here is an example of how daikin_s21 can be used with inverted UART pins
+and an RX pullup (newer Faikin PCB rev):
 
 ```yaml
 uart:
-  - id: s21_tx
-    tx_pin: 26
-    baud_rate: 2400
-    data_bits: 8
-    parity: EVEN
-    stop_bits: 2
-
-  - id: s21_rx
-    rx_pin:
-      number: 27
+  - id: s21_uart
+    tx_pin:
+      number: GPIO48
       inverted: true
+    rx_pin:
+      number: GPIO34
+      inverted: true
+      mode:
+        input: true
+        pullup: true
     baud_rate: 2400
     data_bits: 8
     parity: EVEN
     stop_bits: 2
-
-split_uart:
-  id: split_uart_1
-  tx_uart: s21_tx
-  rx_uart: s21_rx
 
 daikin_s21:
-  uart: split_uart_1
+  uart: s21_uart
 ```
 
-Here's an example of a single UART using direct wiring (you can leave out the split_uart component import as well):
+Here's an example of ESP32 dev board using direct wiring:
 
 ```yaml
 uart:
@@ -409,6 +405,9 @@ uart:
         open_drain: true  # daikin pulls up to 5V internally
     rx_pin: GPIO44
     baud_rate: 2400
+    data_bits: 8
+    parity: EVEN
+    stop_bits: 2
 
 daikin_s21:
   uart: s21_uart
