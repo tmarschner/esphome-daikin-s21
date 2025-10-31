@@ -307,7 +307,7 @@ DaikinC10 DaikinS21Climate::calc_s21_setpoint() {
   const auto current_temperature = this->get_current_temperature();
 
   // offset the ideal setpoint by the difference between the unit and reference sensor (0 if the same sensor)
-  auto s21_setpoint = static_cast<DaikinC10>(this->target_temperature) + 2.0*(double)(this->get_parent()->get_temp_inside() - current_temperature);
+  auto s21_setpoint = static_cast<DaikinC10>(this->target_temperature) + (this->get_parent()->get_temp_inside() - current_temperature) + (this->get_parent()->get_temp_inside() - current_temperature);
   
   // Round to Daikin's internal setpoint resolution
   // When the ideal setpoint is between steps force it in the direction of change by controlling rounding. Over time it should oscillate over the ideal setpoint.
